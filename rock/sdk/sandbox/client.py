@@ -13,7 +13,9 @@ from typing_extensions import deprecated
 
 from rock import env_vars
 from rock.actions import (
+    AbstractSandbox,
     Action,
+    BashAction,
     CloseResponse,
     CloseSessionRequest,
     CloseSessionResponse,
@@ -33,7 +35,6 @@ from rock.actions import (
     WriteFileRequest,
     WriteFileResponse,
 )
-from rock.actions.sandbox.base import AbstractSandbox
 from rock.sdk.common.constants import RunModeType
 from rock.sdk.sandbox.config import SandboxConfig, SandboxGroupConfig
 from rock.utils import HttpUtils, extract_nohup_pid, retry_async
@@ -264,7 +265,7 @@ class Sandbox(AbstractSandbox):
 
             # Build and execute nohup command
             nohup_command = f"nohup {cmd} < /dev/null > {redirect_file_path} 2>&1 & echo $!;disown"
-            action = Action(command=nohup_command, session=temp_session)
+            action = BashAction(command=nohup_command, session=temp_session)
             response = await self._run_in_session(action)
 
             # Parse
@@ -298,7 +299,7 @@ class Sandbox(AbstractSandbox):
                     session = temp_session
                 tmp_file = f"/tmp/tmp_{timestamp}.out"
                 nohup_command = f"nohup {cmd} < /dev/null > {tmp_file} 2>&1 & echo $!;disown"
-                action = Action(command=nohup_command, session=session)
+                action = BashAction(command=nohup_command, session=session)
                 response: Observation = await self._run_in_session(action)
 
                 pid = extract_nohup_pid(response.output)
@@ -313,7 +314,7 @@ class Sandbox(AbstractSandbox):
                     pid=pid, session=session, wait_timeout=wait_timeout, wait_interval=wait_interval
                 )
                 exec_result: Observation = await self._run_in_session(
-                    Action(session=session, command=f"cat {tmp_file}")
+                    BashAction(session=session, command=f"cat {tmp_file}")
                 )
                 if success:
                     return Observation(output=exec_result.output, exit_code=0)
@@ -324,7 +325,7 @@ class Sandbox(AbstractSandbox):
                 error_msg = f"Failed to execute nohup command '{cmd}': {str(e)}"
                 return Observation(output="", exit_code=1, failure_reason=error_msg)
         elif mode == "normal":
-            return await self._run_in_session(action=Action(command=cmd, session=session))
+            return await self._run_in_session(action=BashAction(command=cmd, session=session))
         else:
             return Observation(output="", exit_code=1, failure_reason="Unsupported arun mode")
 
@@ -371,7 +372,7 @@ class Sandbox(AbstractSandbox):
             try:
                 # Check if process still exists
                 await asyncio.wait_for(
-                    self.run_in_session(Action(session=session, command=check_alive_cmd)),
+                    self.run_in_session(BashAction(session=session, command=check_alive_cmd)),
                     timeout=check_alive_timeout,
                 )
 
@@ -549,7 +550,7 @@ class Sandbox(AbstractSandbox):
             await self.create_session(CreateBashSessionRequest(session=check_file_session))
             check_file_cmd = f"test -f {target_path}"
             check_response: Observation = await self.run_in_session(
-                action=Action(command=check_file_cmd, session=check_file_session)
+                action=BashAction(command=check_file_cmd, session=check_file_session)
             )
             if not check_response.exit_code == 0:
                 return UploadResponse(

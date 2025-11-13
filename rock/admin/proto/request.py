@@ -1,6 +1,6 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from rock import env_vars
 from rock.actions import (
@@ -25,12 +25,6 @@ class SandboxStartRequest(BaseModel):
     cpus: float = 2
     """The amount of CPUs to allocate for the container."""
 
-    def transform(self):
-        from rock.deployments.config import DockerDeploymentConfig
-
-        res = DockerDeploymentConfig(**self.model_dump())
-        return res
-
 
 class SandboxCommand(Command):
     timeout: float | None = 1200
@@ -52,25 +46,14 @@ class SandboxCommand(Command):
     sandbox_id: str | None = None
     """The id of the sandbox."""
 
-    def transform(self):
-        from rock.rocklet.proto.request import InternalCommand
-
-        res = InternalCommand(**self.model_dump())
-        res.container_name = self.sandbox_id
-        return res
-
 
 class SandboxCreateBashSessionRequest(CreateBashSessionRequest):
     startup_timeout: float = 1.0
     max_read_size: int = 2000
     sandbox_id: str | None = None
 
-    def transform(self):
-        from rock.rocklet.proto.request import InternalCreateBashSessionRequest
 
-        res = InternalCreateBashSessionRequest(**self.model_dump())
-        res.container_name = self.sandbox_id
-        return res
+SandboxCreateSessionRequest = Annotated[SandboxCreateBashSessionRequest, Field(discriminator="session_type")]
 
 
 class SandboxBashAction(BashAction):
@@ -91,45 +74,23 @@ class SandboxBashAction(BashAction):
     expect: list[str] = []
     """Outputs to expect in addition to the PS1"""
 
-    def transform(self):
-        from rock.rocklet.proto.request import InternalBashAction
 
-        res = InternalBashAction(**self.model_dump())
-        res.container_name = self.sandbox_id
-        return res
+SandboxAction = Annotated[SandboxBashAction, Field(discriminator="action_type")]
 
 
 class SandboxCloseBashSessionRequest(CloseBashSessionRequest):
     sandbox_id: str | None = None
 
-    def transform(self):
-        from rock.rocklet.proto.request import InternalCloseBashSessionRequest
 
-        res = InternalCloseBashSessionRequest(**self.model_dump())
-        res.container_name = self.sandbox_id
-        return res
+SandboxCloseSessionRequest = Annotated[SandboxCloseBashSessionRequest, Field(discriminator="session_type")]
 
 
 class SandboxReadFileRequest(ReadFileRequest):
     sandbox_id: str | None = None
 
-    def transform(self):
-        from rock.rocklet.proto.request import InternalReadFileRequest
-
-        res = InternalReadFileRequest(**self.model_dump())
-        res.container_name = self.sandbox_id
-        return res
-
 
 class SandboxWriteFileRequest(WriteFileRequest):
     sandbox_id: str | None = None
-
-    def transform(self):
-        from rock.rocklet.proto.request import InternalWriteFileRequest
-
-        res = InternalWriteFileRequest(**self.model_dump())
-        res.container_name = self.sandbox_id
-        return res
 
 
 class WarmupRequest(BaseModel):

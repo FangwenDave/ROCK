@@ -34,10 +34,21 @@ from rock.actions import (
     IsAliveResponse,
     LocalSandboxRuntimeConfig,
     Observation,
+    ReadFileRequest,
     ReadFileResponse,
+    UploadRequest,
     UploadResponse,
+    WriteFileRequest,
     WriteFileResponse,
 )
+from rock.admin.proto.request import SandboxAction as Action
+from rock.admin.proto.request import SandboxBashAction as BashAction
+from rock.admin.proto.request import SandboxCloseSessionRequest as CloseSessionRequest
+from rock.admin.proto.request import SandboxCommand as Command
+from rock.admin.proto.request import SandboxCreateBashSessionRequest as CreateBashSessionRequest
+from rock.admin.proto.request import SandboxCreateSessionRequest as CreateSessionRequest
+from rock.admin.proto.request import SandboxReadFileRequest as ReadFileRequest
+from rock.admin.proto.request import SandboxWriteFileRequest as WriteFileRequest
 from rock.logger import init_logger
 from rock.rocklet.exceptions import (
     BashIncorrectSyntaxError,
@@ -48,16 +59,6 @@ from rock.rocklet.exceptions import (
     SessionExistsError,
     SessionNotInitializedError,
 )
-from rock.rocklet.proto.request import BashInterruptAction
-from rock.rocklet.proto.request import InternalAction as Action
-from rock.rocklet.proto.request import InternalBashAction as BashAction
-from rock.rocklet.proto.request import InternalCloseSessionRequest as CloseSessionRequest
-from rock.rocklet.proto.request import InternalCommand as Command
-from rock.rocklet.proto.request import InternalCreateBashSessionRequest as CreateBashSessionRequest
-from rock.rocklet.proto.request import InternalCreateSessionRequest as CreateSessionRequest
-from rock.rocklet.proto.request import InternalReadFileRequest as ReadFileRequest
-from rock.rocklet.proto.request import InternalUploadRequest as UploadRequest
-from rock.rocklet.proto.request import InternalWriteFileRequest as WriteFileRequest
 from rock.utils import get_executor
 
 __all__ = ["LocalSandboxRuntime", "BashSession"]
@@ -207,43 +208,7 @@ class BashSession(Session):
             return ""
         return _strip_control_chars(output)
 
-    async def async_interrupt(self, action: BashInterruptAction) -> BashObservation:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, self.interrupt, action)
-
-    def interrupt(self, action: BashInterruptAction) -> BashObservation:
-        """Interrupt the session."""
-        output = ""
-        for _ in range(action.n_retry):
-            self.shell.sendintr()
-            expect_strings = action.expect + [self._ps1]
-            try:
-                expect_index = self.shell.expect(expect_strings, timeout=action.timeout)  # type: ignore
-                matched_expect_string = expect_strings[expect_index]
-            except Exception:
-                time.sleep(0.2)
-                continue
-            output += _strip_control_chars(self.shell.before)  # type: ignore
-            output += self._eat_following_output()
-            output = output.strip()
-            return BashObservation(output=output, exit_code=0, expect_string=matched_expect_string)
-        # Fall back to putting job to background and killing it there:
-        try:
-            self.shell.sendcontrol("z")
-            self.shell.expect(expect_strings, timeout=action.timeout)
-            output += self.shell.before
-            self.shell.sendline("kill -9 %1")
-            expect_index = self.shell.expect(expect_strings, timeout=action.timeout)  # type: ignore
-            matched_expect_string = expect_strings[expect_index]
-            output += self.shell.before
-            output += self._eat_following_output()
-            output = output.strip()
-            return BashObservation(output=output, exit_code=0, expect_string=matched_expect_string)
-        except pexpect.TIMEOUT:
-            msg = "Failed to interrupt session"
-            raise pexpect.TIMEOUT(msg)
-
-    async def run(self, action: BashAction | BashInterruptAction) -> BashObservation:
+    async def run(self, action: BashAction) -> BashObservation:
         """Run a bash action.
 
         Raises:
@@ -258,8 +223,6 @@ class BashSession(Session):
         if self.shell is None:
             msg = "shell not initialized"
             raise SessionNotInitializedError(msg)
-        if isinstance(action, BashInterruptAction):
-            return await self.async_interrupt(action)
         if action.is_interactive_command or action.is_interactive_quit:
             return await self._aync_run_interactive(action)
         r = await self._async_run_normal(action)

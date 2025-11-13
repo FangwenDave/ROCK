@@ -23,17 +23,16 @@ from rock.actions import (
 from rock.admin.core.redis_key import alive_sandbox_key, timeout_sandbox_key
 from rock.admin.metrics.decorator import monitor_sandbox_operation
 from rock.admin.metrics.monitor import MetricsMonitor
+from rock.admin.proto.request import SandboxBashAction as BashAction
+from rock.admin.proto.request import SandboxCloseBashSessionRequest as CloseBashSessionRequest
+from rock.admin.proto.request import SandboxCommand as Command
+from rock.admin.proto.request import SandboxCreateSessionRequest as CreateSessionRequest
+from rock.admin.proto.request import SandboxReadFileRequest as ReadFileRequest
+from rock.admin.proto.request import SandboxWriteFileRequest as WriteFileRequest
 from rock.config import OssConfig, ProxyServiceConfig, RockConfig
 from rock.deployments.constants import Port
 from rock.deployments.status import ServiceStatus
 from rock.logger import init_logger
-from rock.rocklet.proto.request import BashInterruptAction
-from rock.rocklet.proto.request import InternalBashAction as BashAction
-from rock.rocklet.proto.request import InternalCloseBashSessionRequest as CloseBashSessionRequest
-from rock.rocklet.proto.request import InternalCommand as Command
-from rock.rocklet.proto.request import InternalCreateSessionRequest as CreateSessionRequest
-from rock.rocklet.proto.request import InternalReadFileRequest as ReadFileRequest
-from rock.rocklet.proto.request import InternalWriteFileRequest as WriteFileRequest
 from rock.utils.providers import RedisProvider
 
 logger = init_logger(__name__)
@@ -66,7 +65,7 @@ class SandboxProxyService:
 
     @monitor_sandbox_operation()
     async def create_session(self, request: CreateSessionRequest) -> CreateBashSessionResponse:
-        sandbox_id = request.container_name
+        sandbox_id = request.sandbox_id
         await self._update_expire_time(sandbox_id)
         sandbox_status_dicts = await self.get_service_status(sandbox_id)
         response = await self._send_request(
@@ -75,8 +74,8 @@ class SandboxProxyService:
         return CreateBashSessionResponse(**response)
 
     @monitor_sandbox_operation()
-    async def run_in_session(self, action: BashAction | BashInterruptAction) -> BashObservation:
-        sandbox_id = action.container_name
+    async def run_in_session(self, action: BashAction) -> BashObservation:
+        sandbox_id = action.sandbox_id
         await self._update_expire_time(sandbox_id)
         sandbox_status_dicts = await self.get_service_status(sandbox_id)
         response = await self._send_request(
@@ -86,7 +85,7 @@ class SandboxProxyService:
 
     @monitor_sandbox_operation()
     async def close_session(self, request: CloseBashSessionRequest) -> CloseBashSessionResponse:
-        sandbox_id = request.container_name
+        sandbox_id = request.sandbox_id
         await self._update_expire_time(sandbox_id)
         sandbox_status_dicts = await self.get_service_status(sandbox_id)
         response = await self._send_request(
@@ -102,7 +101,7 @@ class SandboxProxyService:
 
     @monitor_sandbox_operation()
     async def read_file(self, request: ReadFileRequest) -> ReadFileResponse:
-        sandbox_id = request.container_name
+        sandbox_id = request.sandbox_id
         await self._update_expire_time(sandbox_id)
         sandbox_status_dicts = await self.get_service_status(sandbox_id)
         response = await self._send_request(
@@ -112,7 +111,7 @@ class SandboxProxyService:
 
     @monitor_sandbox_operation()
     async def write_file(self, request: WriteFileRequest) -> WriteFileResponse:
-        sandbox_id = request.container_name
+        sandbox_id = request.sandbox_id
         await self._update_expire_time(sandbox_id)
         sandbox_status_dicts = await self.get_service_status(sandbox_id)
         response = await self._send_request(
@@ -131,7 +130,7 @@ class SandboxProxyService:
 
     @monitor_sandbox_operation()
     async def execute(self, command: Command) -> CommandResponse:
-        sandbox_id = command.container_name
+        sandbox_id = command.sandbox_id
         await self._update_expire_time(sandbox_id)
         sandbox_status_dicts = await self.get_service_status(sandbox_id)
         response = await self._send_request(

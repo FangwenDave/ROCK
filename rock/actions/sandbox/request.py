@@ -28,7 +28,7 @@ class BashAction(BaseModel):
     check: Literal["silent", "raise", "ignore"] = "raise"
 
 
-Action = BashAction
+Action = Annotated[BashAction, Field(discriminator="action_type")]
 
 
 class WriteFileRequest(BaseModel):

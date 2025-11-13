@@ -11,6 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from rock.admin.proto.request import SandboxStartRequest
 from rock.config import RuntimeConfig
 from rock.deployments.abstract import AbstractDeployment
 from rock.utils import REQUEST_TIMEOUT_SECONDS
@@ -148,6 +149,11 @@ class DockerDeploymentConfig(DeploymentConfig):
     @property
     def auto_clear_time(self) -> int:
         return self.auto_clear_time_minutes
+
+    @classmethod
+    def from_request(cls, request: SandboxStartRequest) -> DeploymentConfig:
+        """Create DockerDeploymentConfig from SandboxStartRequest"""
+        return cls(**request.model_dump())
 
 
 class RayDeploymentConfig(DockerDeploymentConfig):

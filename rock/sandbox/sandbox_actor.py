@@ -18,19 +18,18 @@ from rock.actions import (
     UploadResponse,
     WriteFileResponse,
 )
+from rock.admin.proto.request import SandboxBashAction as BashAction
+from rock.admin.proto.request import SandboxCloseBashSessionRequest as CloseBashSessionRequest
+from rock.admin.proto.request import SandboxCommand as Command
+from rock.admin.proto.request import SandboxCreateBashSessionRequest as CreateBashSessionRequest
+from rock.admin.proto.request import SandboxReadFileRequest as ReadFileRequest
+from rock.admin.proto.request import SandboxWriteFileRequest as WriteFileRequest
 from rock.deployments.abstract import AbstractDeployment
 from rock.deployments.config import DeploymentConfig
 from rock.deployments.constants import Status
 from rock.deployments.docker import DockerDeployment
 from rock.deployments.status import ServiceStatus
 from rock.logger import init_logger
-from rock.rocklet.proto.request import BashInterruptAction
-from rock.rocklet.proto.request import InternalBashAction as BashAction
-from rock.rocklet.proto.request import InternalCloseBashSessionRequest as CloseBashSessionRequest
-from rock.rocklet.proto.request import InternalCommand as Command
-from rock.rocklet.proto.request import InternalCreateBashSessionRequest as CreateBashSessionRequest
-from rock.rocklet.proto.request import InternalReadFileRequest as ReadFileRequest
-from rock.rocklet.proto.request import InternalWriteFileRequest as WriteFileRequest
 from rock.sandbox.gem_actor import GemActor
 
 logger = init_logger(__name__)
@@ -185,7 +184,7 @@ class SandboxActor(GemActor):
         await self._refresh_stop_time()
         return await self._deployment.runtime.create_session(request)
 
-    async def run_in_session(self, action: BashAction | BashInterruptAction) -> BashObservation:
+    async def run_in_session(self, action: BashAction) -> BashObservation:
         await self._refresh_stop_time()
         return await self._deployment.runtime.run_in_session(action)
 
