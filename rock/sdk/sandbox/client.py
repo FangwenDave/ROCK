@@ -42,6 +42,8 @@ from rock.sdk.common.exceptions import InvalidParameterRockException
 from rock.sdk.sandbox.agent.base import Agent
 from rock.sdk.sandbox.config import SandboxConfig, SandboxGroupConfig
 from rock.sdk.sandbox.model_service.base import ModelService
+from rock.sdk.sandbox.network import Network
+from rock.sdk.sandbox.process import Process
 from rock.sdk.sandbox.remote_user import LinuxRemoteUser, RemoteUser
 from rock.utils import HttpUtils, extract_nohup_pid, retry_async
 
@@ -65,6 +67,8 @@ class Sandbox(AbstractSandbox):
     agent: Agent | None = None
     model_service: ModelService | None = None
     remote_user: RemoteUser | None = None
+    process: Process | None = None
+    network: Network | None = None
 
     def __init__(self, config: SandboxConfig):
         self._pod_name = None
@@ -80,6 +84,8 @@ class Sandbox(AbstractSandbox):
         self._oss_token_expire_time = self._generate_utc_iso_time()
         self._cluster = self.config.cluster
         self.remote_user = LinuxRemoteUser(self)
+        self.process = Process(self)
+        self.network = Network(self)
 
     @property
     def sandbox_id(self) -> str:
