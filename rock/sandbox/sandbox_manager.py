@@ -1,11 +1,16 @@
 import asyncio
 import time
+from fastapi import UploadFile
+import ray
 
 from rock import env_vars
 from rock.actions import (
     BashObservation,
     CommandResponse,
     CreateBashSessionResponse,
+    ReadFileResponse,
+    UploadResponse,
+    WriteFileResponse,
 )
 from rock.actions.sandbox.response import IsAliveResponse, State
 from rock.admin.proto.request import SandboxCreateSessionRequest as CreateSessionRequest
@@ -17,12 +22,15 @@ from rock.admin.core.ray_service import RayService
 from rock.admin.core.redis_key import ALIVE_PREFIX, alive_sandbox_key, timeout_sandbox_key
 from rock.admin.metrics.decorator import monitor_sandbox_operation
 from rock.admin.proto.response import SandboxStartResponse, SandboxStatusResponse
+from rock.admin.proto.request import SandboxReadFileRequest as ReadFileRequest
+from rock.admin.proto.request import SandboxWriteFileRequest as WriteFileRequest
 from rock.config import RockConfig, RuntimeConfig
 from rock.deployments.config import DeploymentConfig, DockerDeploymentConfig
 from rock.deployments.constants import Port
 from rock.deployments.status import PersistedServiceStatus, ServiceStatus
 from rock.deployments.abstract import AbstractDeployment
 from rock.deployments.config import DeploymentConfig
+
 from rock.logger import init_logger
 from rock.sandbox.base_manager import BaseManager
 from rock.sandbox.service.deployment_service import AbstractDeploymentService, RayDeploymentService
@@ -66,6 +74,14 @@ class SandboxManager(BaseManager):
         self._deployment_service = RayDeploymentService(ray_namespace=ray_namespace)
         logger.info("sandbox service init success")
 
+    # TODO:remain for test, delete it after test refactor
+    async def async_ray_get_actor(self, sandbox_id: str):
+        return await self._deployment_service.async_ray_get_actor(sandbox_id)
+    
+    # TODO:remain for test, delete it after test refactor
+    async def async_ray_get(self, ray_future: ray.ObjectRef):
+        return await self._deployment_service.async_ray_get(ray_future)
+    
     @monitor_sandbox_operation()
     async def start_async(self, config: DeploymentConfig, user_info: dict = {}) -> SandboxStartResponse:
         return await self.submit(config, user_info)
@@ -317,6 +333,32 @@ class SandboxManager(BaseManager):
             raise Exception(f"sandbox {command.sandbox_id} not found to execute")
         await self._update_expire_time(command.sandbox_id)
         return await self._deployment_service.async_ray_get(sandbox_actor.execute.remote(command))
+    
+    # TODO:remain for test, delete it after test refactor
+    async def read_file(self, request: ReadFileRequest) -> ReadFileResponse:
+        sandbox_actor = await self.async_ray_get_actor(request.sandbox_id)
+        if sandbox_actor is None:
+            raise Exception(f"sandbox {request.sandbox_id} not found to read file")
+        await self._update_expire_time(request.sandbox_id)
+        return await self.async_ray_get(sandbox_actor.read_file.remote(request))
+
+    # TODO:remain for test, delete it after test refactor
+    @monitor_sandbox_operation()
+    async def write_file(self, request: WriteFileRequest) -> WriteFileResponse:
+        sandbox_actor = await self.async_ray_get_actor(request.sandbox_id)
+        if sandbox_actor is None:
+            raise Exception(f"sandbox {request.sandbox_id} not found to write file")
+        await self._update_expire_time(request.sandbox_id)
+        return await self.async_ray_get(sandbox_actor.write_file.remote(request))
+
+    # TODO:remain for test, delete it after test refactor
+    @monitor_sandbox_operation()
+    async def upload(self, file: UploadFile, target_path: str, sandbox_id: str) -> UploadResponse:
+        sandbox_actor = await self.async_ray_get_actor(sandbox_id)
+        if sandbox_actor is None:
+            raise Exception(f"sandbox {sandbox_id} not found to upload file")
+        await self._update_expire_time(sandbox_id)
+        return await self.async_ray_get(sandbox_actor.upload.remote(file, target_path))
 
     async def _is_expired(self, sandbox_id):
         timeout_dict = await self._redis_provider.json_get(timeout_sandbox_key(sandbox_id), "$")

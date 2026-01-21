@@ -108,6 +108,26 @@ async def create_session(request: SandboxCreateBashSessionRequest) -> RockRespon
 async def run(action: SandboxBashAction) -> RockResponse[BashObservation]:
     return RockResponse(result=await sandbox_manager.run_in_session(action))
 
+@sandbox_router.post("/read_file")
+@handle_exceptions(error_message="read file failed")
+async def read_file(request: SandboxReadFileRequest) -> RockResponse[ReadFileResponse]:
+    return RockResponse(result=await sandbox_manager.read_file(request))
+
+
+@sandbox_router.post("/write_file")
+@handle_exceptions(error_message="write file failed")
+async def write_file(request: SandboxWriteFileRequest) -> RockResponse[WriteFileResponse]:
+    return RockResponse(result=await sandbox_manager.write_file(request))
+
+
+@sandbox_router.post("/upload")
+@handle_exceptions(error_message="upload file failed")
+async def upload(
+    file: UploadFile = File(...),
+    target_path: str = Form(...),
+    sandbox_id: str | None = Form(None),
+) -> RockResponse[UploadResponse]:
+    return RockResponse(result=await sandbox_manager.upload(file, target_path, sandbox_id))
 
 @sandbox_router.post("/stop")
 @handle_exceptions(error_message="stop sandbox failed")
