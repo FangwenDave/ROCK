@@ -127,12 +127,7 @@ class SandboxManager(BaseManager):
     async def commit(self, sandbox_id, image_tag: str, username: str, password: str) -> CommandResponse:
         async with self._ray_service.get_ray_rwlock().read_lock():
             logger.info(f"commit sandbox {sandbox_id}")
-            deployment: AbstractDeployment = await self._deployment_service.get_deployment(sandbox_id)
-            if deployment is None:
-                await self._clear_redis_keys(sandbox_id)
-                raise Exception(f"sandbox {sandbox_id} not found to commit")
-            logger.info(f"begin to commit {sandbox_id} to {image_tag}")
-            result = await deployment.commit(image_tag, username, password)
+            result = await self._deployment_service.commit(sandbox_id, image_tag, username, password)
             logger.info(f"commit {sandbox_id} to {image_tag} finished, result {result}")
             return result
 
@@ -335,14 +330,6 @@ class SandboxManager(BaseManager):
         else:
             logger.info(f"sandbox_id:[{sandbox_id}] is already cleared")
             return True
-
-    async def _is_deployment_alive(self, sandbox_id):
-        try:
-            deployment = await self._deployment_service.get_deployment(sandbox_id)
-            return deployment is not None
-        except Exception as e:
-            logger.error("get deployment failed", exc_info=e)
-            return False
 
     async def _check_job_background(self):
         if not self._redis_provider:

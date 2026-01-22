@@ -21,23 +21,16 @@ logger = logging.getLogger(__file__)
 @pytest.mark.need_ray
 @pytest.mark.asyncio
 async def test_async_sandbox_start(sandbox_manager: SandboxManager):
-    response = await sandbox_manager.start_async(DockerDeploymentConfig())
+    response = await sandbox_manager.submit(DockerDeploymentConfig())
     sandbox_id = response.sandbox_id
     assert sandbox_id is not None
-    search_start_time = time.time()
-    while time.time() - search_start_time < 60:
-        is_alive_response = await sandbox_manager._is_deployment_alive(sandbox_id)
-        if is_alive_response:
-            break
+    assert wait_sandbox_instance_alive(sandbox_manager, sandbox_id)
 
-    is_alive_response = await sandbox_manager._is_deployment_alive(sandbox_id)
-    assert is_alive_response
+    assert await sandbox_manager._deployment_service.is_deployment_alive(sandbox_id)
 
-    # TODO: fix async_ray_get_actor for it is not a general method
-    sandbox_actor = await sandbox_manager._deployment_service.async_ray_get_actor(sandbox_id)
-    assert sandbox_actor is not None
-    assert await sandbox_actor.user_id.remote() == "default"
-    assert await sandbox_actor.experiment_id.remote() == "default"
+    sandbox_status = await sandbox_manager.get_status(sandbox_id)
+    assert sandbox_status.user_id == "default"
+    assert sandbox_status.experiment_id == "default"
 
     await sandbox_manager.stop(sandbox_id)
 
@@ -45,7 +38,7 @@ async def test_async_sandbox_start(sandbox_manager: SandboxManager):
 @pytest.mark.need_ray
 @pytest.mark.asyncio
 async def test_get_status(sandbox_manager):
-    response = await sandbox_manager.start_async(DockerDeploymentConfig(image="python:3.11"))
+    response = await sandbox_manager.submit(DockerDeploymentConfig(image="python:3.11"))
     await asyncio.sleep(5)
     docker_status: SandboxStatusResponse = await sandbox_manager.get_status(response.sandbox_id)
     assert docker_status.status["docker_run"]
@@ -69,43 +62,32 @@ async def test_get_status(sandbox_manager):
 async def test_ray_actor_is_alive(sandbox_manager):
     docker_deploy_config = DockerDeploymentConfig()
 
-    response = await sandbox_manager.start_async(docker_deploy_config)
+    response = await sandbox_manager.submit(docker_deploy_config)
     assert response.sandbox_id is not None
 
-    assert await sandbox_manager._is_deployment_alive(response.sandbox_id)
+    assert wait_sandbox_instance_alive(sandbox_manager, response.sandbox_id)
 
     sandbox_actor = await sandbox_manager._deployment_service.async_ray_get_actor(response.sandbox_id)
     ray.kill(sandbox_actor)
 
-    assert not await sandbox_manager._is_deployment_alive(response.sandbox_id)
+    assert not await sandbox_manager._deployment_service.is_deployment_alive(response.sandbox_id)
 
 
 @pytest.mark.need_ray
 @pytest.mark.asyncio
 async def test_user_info_set_success(sandbox_manager):
     user_info = {"user_id": "test_user_id", "experiment_id": "test_experiment_id"}
-    response = await sandbox_manager.start_async(RayDeploymentConfig(), user_info=user_info)
+    response = await sandbox_manager.submit(RayDeploymentConfig(), user_info=user_info)
     sandbox_id = response.sandbox_id
 
-    cnt = 0
-    while True:
-        is_alive_response = await sandbox_manager._is_deployment_alive(sandbox_id)
-        if is_alive_response:
-            break
-        time.sleep(1)
-        cnt += 1
-        if cnt > 60:
-            raise Exception("sandbox not alive")
+    assert wait_sandbox_instance_alive(sandbox_manager, sandbox_id)
 
-    is_alive_response = await sandbox_manager._is_deployment_alive(sandbox_id)
+    is_alive_response = await sandbox_manager._deployment_service.is_deployment_alive(sandbox_id)
     assert is_alive_response
 
-    sandbox_deployment = await sandbox_manager._deployment_service.get_deployment(sandbox_id)
-    assert sandbox_deployment is not None
-
-    ray_actor = await sandbox_manager._deployment_service.async_ray_get_actor(sandbox_id)
-    assert await ray_actor.user_id.remote() == "test_user_id"
-    assert await ray_actor.experiment_id.remote() == "test_experiment_id"
+    sandbox_status = await sandbox_manager.get_status(sandbox_id)
+    assert sandbox_status.user_id == "test_user_id"
+    assert sandbox_status.experiment_id == "test_experiment_id"
 
     await sandbox_manager.stop(sandbox_id)
 
@@ -121,7 +103,7 @@ def test_set_sandbox_status_response():
 async def test_resource_limit_exception(sandbox_manager, docker_deployment_config):
     docker_deployment_config.cpus = 20
     with pytest.raises(BadRequestRockError) as e:
-        await sandbox_manager.start_async(docker_deployment_config)
+        await sandbox_manager.submit(docker_deployment_config)
     logger.warning(f"Resource limit exception: {str(e)}", exc_info=True)
 
 
@@ -130,7 +112,7 @@ async def test_resource_limit_exception(sandbox_manager, docker_deployment_confi
 async def test_resource_limit_exception_memory(sandbox_manager, docker_deployment_config):
     docker_deployment_config.memory = "65g"
     with pytest.raises(BadRequestRockError) as e:
-        await sandbox_manager.start_async(docker_deployment_config)
+        await sandbox_manager.submit(docker_deployment_config)
     logger.warning(f"Resource limit exception: {str(e)}", exc_info=True)
 
 
@@ -147,7 +129,7 @@ async def test_get_system_resource_info(sandbox_manager):
 @pytest.mark.need_ray
 @pytest.mark.asyncio
 async def test_get_status_state(sandbox_manager):
-    response = await sandbox_manager.start_async(
+    response = await sandbox_manager.submit(
         DockerDeploymentConfig(),
     )
     sandbox_id = response.sandbox_id
@@ -162,11 +144,11 @@ async def test_get_status_state(sandbox_manager):
 async def test_sandbox_start_with_sandbox_id(sandbox_manager):
     try:
         sandbox_id = uuid.uuid4().hex
-        response = await sandbox_manager.start_async(DockerDeploymentConfig(container_name=sandbox_id))
+        response = await sandbox_manager.submit(DockerDeploymentConfig(container_name=sandbox_id))
         assert response.sandbox_id == sandbox_id
         await check_sandbox_status_until_alive(sandbox_manager, sandbox_id)
         with pytest.raises(BadRequestRockError) as e:
-            await sandbox_manager.start_async(
+            await sandbox_manager.submit(
                 DockerDeploymentConfig(container_name=sandbox_id),
                 sandbox_id=sandbox_id,
             )
@@ -174,3 +156,14 @@ async def test_sandbox_start_with_sandbox_id(sandbox_manager):
         logger.error(f"test_sandbox_start_with_sandbox_id error: {str(e)}", exc_info=True)
     finally:
         await sandbox_manager.stop(sandbox_id)
+
+async def wait_sandbox_instance_alive(sandbox_manager: SandboxManager, sandbox_id: str) -> bool:
+    cnt = 0
+    while True:
+        is_alive_response = await sandbox_manager._deployment_service.is_deployment_alive(sandbox_id)
+        if is_alive_response:
+            return True
+        time.sleep(1)
+        cnt += 1
+        if cnt > 60:
+            raise Exception("sandbox not alive")

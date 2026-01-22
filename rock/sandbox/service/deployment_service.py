@@ -20,7 +20,7 @@ logger = init_logger(__name__)
 
 class AbstractDeploymentService():
     @abstractmethod
-    async def get_deployment(self, sandbox_id: str) -> AbstractDeployment:
+    async def is_deployment_alive(self, sandbox_id) -> bool:
         ...
 
     @abstractmethod
@@ -78,6 +78,13 @@ class RayDeploymentService():
     def _get_actor_name(self, sandbox_id):
         return f"sandbox-{sandbox_id}"
 
+    async def is_deployment_alive(self, sandbox_id) -> bool:
+        try:
+            actor: SandboxActor = await self.async_ray_get_actor(sandbox_id)
+        except ValueError:
+            return False
+        return await self.async_ray_get(actor.is_alive.remote())
+    
     async def async_ray_get_actor(self, sandbox_id: str):
         """Async wrapper for ray.get_actor() using asyncio.to_thread for non-blocking execution."""
         try:
@@ -174,13 +181,6 @@ class RayDeploymentService():
         result = await self.async_ray_get(actor.commit.remote())
         logger.info(f"commit: {result}")
         return result
-
-    # TODO: considering modify the result to deployment inside sandbox actor
-    async def get_deployment(self, sandbox_id: str) -> AbstractDeployment:
-        actor: SandboxActor = await self.async_ray_get_actor(sandbox_id)
-        status: ServiceStatus = await self.async_ray_get(actor.get_status.remote())
-        logger.info(f"get_deployment: {status}")
-        return status.phases["docker_run"] == Status.RUNNING
     
     async def env_step(self, request: EnvStepRequest) -> EnvStepResponse:
         sandbox_id = request.sandbox_id
