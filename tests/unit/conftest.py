@@ -55,8 +55,8 @@ async def sandbox_manager(rock_config: RockConfig, redis_provider: RedisProvider
     return sandbox_manager
 
 @pytest.fixture
-async def ray_deployment_service(rock_config: RockConfig, ray_init_shutdown):
-    ray_deployment_service = RayDeploymentService(ray_namespace=rock_config.ray.namespace)
+async def ray_deployment_service(rock_config: RockConfig, ray_init_shutdown, ray_service):
+    ray_deployment_service = RayDeploymentService(ray_namespace=rock_config.ray.namespace, ray_service=ray_service)
     return ray_deployment_service
 
 @pytest.fixture

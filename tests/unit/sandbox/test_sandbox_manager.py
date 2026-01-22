@@ -24,7 +24,7 @@ async def test_async_sandbox_start(sandbox_manager: SandboxManager):
     response = await sandbox_manager.submit(DockerDeploymentConfig())
     sandbox_id = response.sandbox_id
     assert sandbox_id is not None
-    assert wait_sandbox_instance_alive(sandbox_manager, sandbox_id)
+    assert await wait_sandbox_instance_alive(sandbox_manager, sandbox_id)
 
     assert await sandbox_manager._deployment_service.is_deployment_alive(sandbox_id)
 
@@ -65,7 +65,7 @@ async def test_ray_actor_is_alive(sandbox_manager):
     response = await sandbox_manager.submit(docker_deploy_config)
     assert response.sandbox_id is not None
 
-    assert wait_sandbox_instance_alive(sandbox_manager, response.sandbox_id)
+    assert await wait_sandbox_instance_alive(sandbox_manager, response.sandbox_id)
 
     sandbox_actor = await sandbox_manager._deployment_service.async_ray_get_actor(response.sandbox_id)
     ray.kill(sandbox_actor)
@@ -80,7 +80,7 @@ async def test_user_info_set_success(sandbox_manager):
     response = await sandbox_manager.submit(RayDeploymentConfig(), user_info=user_info)
     sandbox_id = response.sandbox_id
 
-    assert wait_sandbox_instance_alive(sandbox_manager, sandbox_id)
+    assert await wait_sandbox_instance_alive(sandbox_manager, sandbox_id)
 
     is_alive_response = await sandbox_manager._deployment_service.is_deployment_alive(sandbox_id)
     assert is_alive_response

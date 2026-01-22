@@ -4,10 +4,9 @@ from rock.actions.envs.request import EnvCloseRequest, EnvMakeRequest, EnvResetR
 from rock.actions.envs.response import EnvCloseResponse, EnvListResponse, EnvMakeResponse, EnvResetResponse, EnvStepResponse
 from rock.actions.sandbox.response import CommandResponse, State
 from rock.actions.sandbox.sandbox_info import SandboxInfo
-from rock.deployments.abstract import AbstractDeployment
+from rock.admin.core.ray_service import RayService
 import ray
 from rock.deployments.config import DeploymentConfig, DockerDeploymentConfig
-from rock.deployments.constants import Status
 from rock.deployments.docker import DockerDeployment
 from rock.deployments.status import ServiceStatus
 from rock.logger import init_logger
@@ -72,8 +71,9 @@ class AbstractDeploymentService():
         ...
 
 class RayDeploymentService():
-    def __init__(self, ray_namespace: str):
+    def __init__(self, ray_namespace: str, ray_service: RayService):
         self._ray_namespace = ray_namespace
+        self._ray_service = ray_service
 
     def _get_actor_name(self, sandbox_id):
         return f"sandbox-{sandbox_id}"
@@ -87,6 +87,7 @@ class RayDeploymentService():
     
     async def async_ray_get_actor(self, sandbox_id: str):
         """Async wrapper for ray.get_actor() using asyncio.to_thread for non-blocking execution."""
+        self._ray_service.increment_ray_request_count()
         try:
             actor_name = self._get_actor_name(sandbox_id)
             result = await asyncio.to_thread(ray.get_actor, actor_name, namespace=self._ray_namespace)
@@ -101,8 +102,8 @@ class RayDeploymentService():
 
     async def async_ray_get(self, ray_future: ray.ObjectRef):
         """Async wrapper for ray.get() using asyncio.to_thread for non-blocking execution."""
+        self._ray_service.increment_ray_request_count()
         try:
-            # Use asyncio.to_thread to run ray.get in a thread pool without managing executor
             result = await asyncio.to_thread(ray.get, ray_future, timeout=60)
         except Exception as e:
             logger.error("ray get failed", exc_info=e)
@@ -111,22 +112,23 @@ class RayDeploymentService():
         return result
 
     async def submit(self, config: DockerDeploymentConfig, user_info: dict) -> SandboxInfo:
-        sandbox_actor: SandboxActor = await self.creator_actor(config)
-        user_id = user_info.get("user_id", "default")
-        experiment_id = user_info.get("experiment_id", "default")
-        namespace = user_info.get("namespace", "default")
-        rock_authorization = user_info.get("rock_authorization", "default")
-        sandbox_actor.start.remote()
-        sandbox_actor.set_user_id.remote(user_id)
-        sandbox_actor.set_experiment_id.remote(experiment_id)
-        sandbox_actor.set_namespace.remote(namespace)
-        sandbox_info: SandboxInfo = await self.async_ray_get(sandbox_actor.sandbox_info.remote())
-        sandbox_info["user_id"] = user_id
-        sandbox_info["experiment_id"] = experiment_id
-        sandbox_info["namespace"] = namespace
-        sandbox_info["state"] = State.PENDING
-        sandbox_info["rock_authorization"] = rock_authorization
-        return sandbox_info
+        async with self._ray_service.get_ray_rwlock().read_lock():
+            sandbox_actor: SandboxActor = await self.creator_actor(config)
+            user_id = user_info.get("user_id", "default")
+            experiment_id = user_info.get("experiment_id", "default")
+            namespace = user_info.get("namespace", "default")
+            rock_authorization = user_info.get("rock_authorization", "default")
+            sandbox_actor.start.remote()
+            sandbox_actor.set_user_id.remote(user_id)
+            sandbox_actor.set_experiment_id.remote(experiment_id)
+            sandbox_actor.set_namespace.remote(namespace)
+            sandbox_info: SandboxInfo = await self.async_ray_get(sandbox_actor.sandbox_info.remote())
+            sandbox_info["user_id"] = user_id
+            sandbox_info["experiment_id"] = experiment_id
+            sandbox_info["namespace"] = namespace
+            sandbox_info["state"] = State.PENDING
+            sandbox_info["rock_authorization"] = rock_authorization
+            return sandbox_info
 
     async def creator_actor(self, config: DockerDeploymentConfig):
         actor_options = self._generate_actor_options(config)
@@ -147,40 +149,45 @@ class RayDeploymentService():
             raise BadRequestRockError(f"Invalid memory size: {config.memory}")
 
     async def stop(self, sandbox_id: str):
-        actor: SandboxActor = await self.async_ray_get_actor(sandbox_id)
-        await self.async_ray_get(actor.stop.remote())
-        logger.info(f"run time stop over {sandbox_id}")
-        ray.kill(actor)
+        async with self._ray_service.get_ray_rwlock().read_lock():
+            actor: SandboxActor = await self.async_ray_get_actor(sandbox_id)
+            await self.async_ray_get(actor.stop.remote())
+            logger.info(f"run time stop over {sandbox_id}")
+            ray.kill(actor)
 
     async def get_status(self, sandbox_id: str) -> SandboxInfo:
-        actor: SandboxActor = await self.async_ray_get_actor(sandbox_id)
-        sandbox_info: SandboxInfo = await self.async_ray_get(actor.sandbox_info.remote())
-        remote_status: ServiceStatus = await self.async_ray_get(actor.get_status.remote())
-        sandbox_info["phases"] = remote_status.phases
-        sandbox_info["port_mapping"] = remote_status.get_port_mapping()
-        alive = await self.async_ray_get(actor.is_alive.remote())
-        sandbox_info["alive"] = alive.is_alive
-        if alive.is_alive:
-            sandbox_info["state"] = State.RUNNING
-        return sandbox_info
+        async with self._ray_service.get_ray_rwlock().read_lock():
+            actor: SandboxActor = await self.async_ray_get_actor(sandbox_id)
+            sandbox_info: SandboxInfo = await self.async_ray_get(actor.sandbox_info.remote())
+            remote_status: ServiceStatus = await self.async_ray_get(actor.get_status.remote())
+            sandbox_info["phases"] = remote_status.phases
+            sandbox_info["port_mapping"] = remote_status.get_port_mapping()
+            alive = await self.async_ray_get(actor.is_alive.remote())
+            sandbox_info["alive"] = alive.is_alive
+            if alive.is_alive:
+                sandbox_info["state"] = State.RUNNING
+            return sandbox_info
 
     async def get_mount(self, sandbox_id: str):
-        actor = await self.async_ray_get_actor(sandbox_id)
-        result = await self.async_ray_get(actor.get_mount.remote())
-        logger.info(f"get_mount: {result}")
-        return result
+        with self._ray_service.get_ray_rwlock().read_lock():
+            actor = await self.async_ray_get_actor(sandbox_id)
+            result = await self.async_ray_get(actor.get_mount.remote())
+            logger.info(f"get_mount: {result}")
+            return result
 
     async def get_sandbox_statistics(self, sandbox_id: str):
-        actor = await self.async_ray_get_actor(sandbox_id)
-        result = await self.async_ray_get(actor.get_sandbox_statistics.remote())
-        logger.info(f"get_sandbox_statistics: {result}")
-        return result
+        async with self._ray_service.get_ray_rwlock().read_lock():
+            actor = await self.async_ray_get_actor(sandbox_id)
+            result = await self.async_ray_get(actor.get_sandbox_statistics.remote())
+            logger.info(f"get_sandbox_statistics: {result}")
+            return result
 
     async def commit(self, sandbox_id) -> CommandResponse:
-        actor = await self.async_ray_get_actor(sandbox_id)
-        result = await self.async_ray_get(actor.commit.remote())
-        logger.info(f"commit: {result}")
-        return result
+        with self._ray_service.get_ray_rwlock().read_lock():
+            actor = await self.async_ray_get_actor(sandbox_id)
+            result = await self.async_ray_get(actor.commit.remote())
+            logger.info(f"commit: {result}")
+            return result
     
     async def env_step(self, request: EnvStepRequest) -> EnvStepResponse:
         sandbox_id = request.sandbox_id
