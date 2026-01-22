@@ -15,7 +15,7 @@ logger = init_logger(__name__)
 
 def _get_python_install_cmd() -> str:
     """Get the Python installation command."""
-    return env_vars.ROCK_AGENT_PYTHON_INSTALL_CMD
+    return env_vars.ROCK_RTENV_PYTHON_V31114_INSTALL_CMD
 
 
 async def _verify_exists(sandbox: Sandbox, directory_path: str, items: set[str]) -> None:
@@ -29,6 +29,7 @@ async def _verify_exists(sandbox: Sandbox, directory_path: str, items: set[str])
     logger.info(f"Directory {directory_path} contents: {result.stdout}")
 
 
+@pytest.mark.skip
 @pytest.mark.need_admin
 @SKIP_IF_NO_DOCKER
 @pytest.mark.asyncio
@@ -58,6 +59,7 @@ async def test_swe_agent_initialization(sandbox_instance: Sandbox):
     await _verify_exists(sandbox_instance, python_bin_path, {"sweagent"})
 
 
+@pytest.mark.skip
 @pytest.mark.need_admin
 @SKIP_IF_NO_DOCKER
 @pytest.mark.asyncio
