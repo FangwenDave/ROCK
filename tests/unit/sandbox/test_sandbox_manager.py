@@ -67,7 +67,7 @@ async def test_ray_actor_is_alive(sandbox_manager):
 
     assert await wait_sandbox_instance_alive(sandbox_manager, response.sandbox_id)
 
-    sandbox_actor = await sandbox_manager._deployment_service.async_ray_get_actor(response.sandbox_id)
+    sandbox_actor = await sandbox_manager._deployment_service._ray_service.async_ray_get_actor(response.sandbox_id)
     ray.kill(sandbox_actor)
 
     assert not await sandbox_manager._deployment_service.is_deployment_alive(response.sandbox_id)

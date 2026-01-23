@@ -17,11 +17,13 @@ from rock.admin.proto.response import SandboxStartResponse, SandboxStatusRespons
 from rock.config import RockConfig
 from rock.deployments.config import DockerDeploymentConfig
 from rock.sandbox.sandbox_manager import SandboxManager
+from rock.sandbox.service.env_service import RayEnvService
 from rock.utils.providers import RedisProvider
 from rock.admin.core.ray_service import RayService
 
 
 class GemManager(SandboxManager):
+    _env_service: RayEnvService
     def __init__(
         self,
         rock_config: RockConfig,
@@ -31,6 +33,7 @@ class GemManager(SandboxManager):
         enable_runtime_auto_clear: bool = False,
     ):
         super().__init__(rock_config, redis_provider, ray_namespace, ray_service, enable_runtime_auto_clear)
+        self._env_service = RayEnvService(ray_namespace=ray_namespace, ray_service=ray_service)
 
     async def env_make(self, env_id: str) -> EnvMakeResponse:
         config = DockerDeploymentConfig(image=env_vars.ROCK_ENVHUB_DEFAULT_DOCKER_IMAGE)
@@ -52,22 +55,22 @@ class GemManager(SandboxManager):
         except asyncio.TimeoutError:
             raise Exception("Sandbox startup timeout after 300s")
 
-        make_response = await self._deployment_service.env_make(
+        make_response = await self._env_service.env_make(
             EnvMakeRequest(
                 env_id=env_id,
                 sandbox_id=sandbox_start_response.sandbox_id,
             )
         )
         return make_response
-    
+
     async def env_step(self, request: EnvStepRequest) -> EnvStepResponse:
-        return await self._deployment_service.env_step(request)
+        return await self._env_service.env_step(request)
 
     async def env_reset(self, request: EnvResetRequest) -> EnvResetResponse:
-        return await self._deployment_service.env_reset(request)
+        return await self._env_service.env_reset(request)
 
     async def env_close(self, request: EnvCloseRequest) -> EnvCloseResponse:
-        return await self._deployment_service.env_close(request)
+        return await self._env_service.env_close(request)
 
     async def env_list(self, sandbox_id: str) -> EnvListResponse:
-        return await self._deployment_service.env_list(sandbox_id)
+        return await self._env_service.env_list(sandbox_id)
