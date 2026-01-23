@@ -19,7 +19,7 @@ logger = init_logger(__name__)
 
 class AbstractDeploymentService():
     @abstractmethod
-    async def is_deployment_alive(self, sandbox_id) -> bool:
+    async def is_deployment_alive(self, sandbox_id: str) -> bool:
         ...
 
     @abstractmethod
@@ -28,26 +28,26 @@ class AbstractDeploymentService():
         ...
 
     @abstractmethod
-    async def get_status(self, *args, **kwargs) -> SandboxInfo:
+    async def get_status(self, sandbox_id: str) -> SandboxInfo:
         """Get status of sandbox."""
         ...
 
     @abstractmethod
-    async def stop(self, *args, **kwargs):
+    async def stop(self, sandbox_id: str):
         """Stop sandbox."""
 
     @abstractmethod
-    async def get_mount(self, *args, **kwargs):
+    async def get_mount(self, sandbox_id: str):
         """Get mount of sandbox."""
         ...
 
     @abstractmethod
-    async def get_sandbox_statistics(self, *args, **kwargs):
+    async def get_sandbox_statistics(self, sandbox_id: str):
         """Get sandbox statistics."""
         ...
 
     @abstractmethod
-    async def commit(self, *args, **kwargs) -> CommandResponse:
+    async def commit(self, sandbox_id: str, image_tag: str, username: str, password: str) -> CommandResponse:
         ...
 
     @abstractmethod
