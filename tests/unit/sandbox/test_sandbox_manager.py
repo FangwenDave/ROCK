@@ -68,7 +68,8 @@ async def test_ray_actor_is_alive(sandbox_manager):
 
     assert await wait_sandbox_instance_alive(sandbox_manager, response.sandbox_id)
 
-    sandbox_actor = await sandbox_manager._deployment_service._ray_service.async_ray_get_actor(response.sandbox_id)
+    actor_name = sandbox_manager._deployment_service._get_actor_name(response.sandbox_id)
+    sandbox_actor = await sandbox_manager._deployment_service._ray_service.async_ray_get_actor(actor_name)
     ray.kill(sandbox_actor)
 
     assert not await sandbox_manager._deployment_service.is_alive(response.sandbox_id)
@@ -275,7 +276,7 @@ async def test_get_status_with_redis_without_proxy(sandbox_manager: SandboxManag
     await _test_get_status_with_redis(sandbox_manager, use_proxy=False)
 
 
-@pytest.mark.skip(reason="Skip this test after proxy port is fixed")
+# @pytest.mark.skip(reason="Skip this test after proxy port is fixed")
 @pytest.mark.need_ray
 @pytest.mark.asyncio
 async def test_get_status_with_redis_with_proxy(sandbox_manager: SandboxManager):
