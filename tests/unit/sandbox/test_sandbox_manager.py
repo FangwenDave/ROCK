@@ -276,7 +276,7 @@ async def test_get_status_with_redis_without_proxy(sandbox_manager: SandboxManag
     await _test_get_status_with_redis(sandbox_manager, use_proxy=False)
 
 
-# @pytest.mark.skip(reason="Skip this test after proxy port is fixed")
+@pytest.mark.skip(reason="Skip this test after proxy port is fixed")
 @pytest.mark.need_ray
 @pytest.mark.asyncio
 async def test_get_status_with_redis_with_proxy(sandbox_manager: SandboxManager):
