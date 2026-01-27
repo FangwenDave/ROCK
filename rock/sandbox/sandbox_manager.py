@@ -133,15 +133,15 @@ class SandboxManager(BaseManager):
             logger.info(f"sandbox {sandbox_id} deleted from redis")
 
     @monitor_sandbox_operation()
-    async def get_status(self, sandbox_id, use_proxy: bool = False) -> SandboxStatusResponse:
+    async def get_status(self, sandbox_id, use_rocklet: bool = False) -> SandboxStatusResponse:
         """
         Get sandbox status with optional remote health check.
         
-        Note: The use_proxy parameter is deprecated and will be removed in a future version.
+        Note: The use_rocklet parameter is deprecated and will be removed in a future version.
         
         Args:
             sandbox_id: The sandbox identifier
-            use_proxy: If True, performs remote status check and alive verification (default: False)
+            use_rocklet: If True, performs remote status check and alive verification (default: False)
         
         Returns:
             SandboxStatusResponse with complete status information
@@ -151,7 +151,7 @@ class SandboxManager(BaseManager):
         host_ip = sandbox_info.get("host_ip")
         
         # 2. Determine status retrieval strategy
-        if use_proxy and host_ip:
+        if use_rocklet and self._redis_provider:
             # Use remote status check with parallel operations
             _, remote_status = await asyncio.gather(
                 self._update_expire_time(sandbox_id),
@@ -240,10 +240,10 @@ class SandboxManager(BaseManager):
 
     async def get_status_v2(self, sandbox_id) -> SandboxStatusResponse:
         """
-        Deprecated: Use get_status(sandbox_id, use_proxy=True) instead.
+        Deprecated: Use get_status(sandbox_id, use_rocklet=True) instead.
         This method is kept for backward compatibility.
         """
-        return await self.get_status(sandbox_id, use_proxy=True)
+        return await self.get_status(sandbox_id, use_rocklet=True)
 
     async def get_remote_status(self, sandbox_id: str, host_ip: str) -> ServiceStatus:
         service_status_path = PersistedServiceStatus.gen_service_status_path(sandbox_id)
