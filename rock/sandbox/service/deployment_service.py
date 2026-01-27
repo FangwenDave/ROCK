@@ -38,19 +38,19 @@ class AbstractDeploymentService(ABC):
 
     async def get_mount(self, sandbox_id: str):
         """Get mount of sandbox."""
-        return None
+        raise NotImplementedError
 
     async def get_sandbox_statistics(self, sandbox_id: str):
         """Get sandbox statistics."""
-        return None
+        raise NotImplementedError
 
     async def commit(self, sandbox_id: str, image_tag: str, username: str, password: str) -> CommandResponse:
         """Commit sandbox to image."""
-        return None
+        raise NotImplementedError
 
     async def collect_system_resource_metrics(self) -> SystemResourceMetrics:
         """Collect system resource metrics."""
-        return None
+        raise NotImplementedError
 
 class RayDeploymentService(AbstractDeploymentService):
     def __init__(self, ray_namespace: str, ray_service: RayService):
