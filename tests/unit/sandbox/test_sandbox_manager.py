@@ -192,7 +192,7 @@ async def wait_for_rocklet_service_ready(sandbox_manager: SandboxManager, sandbo
     while time.time() - start_time < timeout:
         try:
             # Get sandbox info to get host_ip and port
-            status = await sandbox_manager.get_status(sandbox_id, use_proxy=False)
+            status = await sandbox_manager.get_status(sandbox_id, use_rocklet=False)
             if not status.is_alive or not status.host_ip:
                 await asyncio.sleep(2)
                 continue
@@ -226,7 +226,7 @@ async def wait_for_rocklet_service_ready(sandbox_manager: SandboxManager, sandbo
     raise Exception(f"Rocklet service not ready within {timeout}s for sandbox {sandbox_id}")
 
 
-async def _test_get_status_with_redis(sandbox_manager: SandboxManager, use_proxy: bool):
+async def _test_get_status_with_redis(sandbox_manager: SandboxManager, use_rocklet: bool):
     """Helper function to test get_status with Redis"""
     from rock.admin.core.redis_key import alive_sandbox_key
     
@@ -238,12 +238,12 @@ async def _test_get_status_with_redis(sandbox_manager: SandboxManager, use_proxy
         # Wait for sandbox to be alive
         await check_sandbox_status_until_alive(sandbox_manager, sandbox_id)
         
-        # If using proxy, wait for rocklet HTTP service to be ready
-        # if use_proxy:
+        # If using rocklet, wait for rocklet HTTP service to be ready
+        # if use_rocklet:
         #     await wait_for_rocklet_service_ready(sandbox_manager, sandbox_id)
         
         # Test: get_status with Redis
-        status_response = await sandbox_manager.get_status(sandbox_id, use_proxy=use_proxy)
+        status_response = await sandbox_manager.get_status(sandbox_id, use_rocklet=use_rocklet)
         
         # Common assertions
         assert status_response.sandbox_id == sandbox_id
@@ -259,8 +259,8 @@ async def _test_get_status_with_redis(sandbox_manager: SandboxManager, use_proxy
         assert redis_data is not None
         assert len(redis_data) > 0
         
-        # Additional assertions for proxy mode
-        if use_proxy:
+        # Additional assertions for rocklet mode
+        if use_rocklet:
             # Verify remote status was fetched (phases should be populated)
             assert status_response.status is not None
             assert "docker_run" in status_response.status
@@ -271,19 +271,19 @@ async def _test_get_status_with_redis(sandbox_manager: SandboxManager, use_proxy
 
 @pytest.mark.need_ray
 @pytest.mark.asyncio
-async def test_get_status_with_redis_without_proxy(sandbox_manager: SandboxManager):
-    """Test get_status: with Redis, without proxy (use_proxy=False)"""
-    await _test_get_status_with_redis(sandbox_manager, use_proxy=False)
+async def test_get_status_with_redis_without_rocklet(sandbox_manager: SandboxManager):
+    """Test get_status: with Redis, without rocklet (use_rocklet=False)"""
+    await _test_get_status_with_redis(sandbox_manager, use_rocklet=False)
 
 
-@pytest.mark.skip(reason="Skip this test after proxy port is fixed")
+@pytest.mark.skip(reason="Skip this test after rocklet port is fixed")
 @pytest.mark.need_ray
 @pytest.mark.asyncio
-async def test_get_status_with_redis_with_proxy(sandbox_manager: SandboxManager):
-    """Test get_status: with Redis, with proxy (use_proxy=True)"""
-    await _test_get_status_with_redis(sandbox_manager, use_proxy=True)
+async def test_get_status_with_redis_with_rocklet(sandbox_manager: SandboxManager):
+    """Test get_status: with Redis, with rocklet (use_rocklet=True)"""
+    await _test_get_status_with_redis(sandbox_manager, use_rocklet=True)
 
-async def _test_get_status_without_redis(rock_config: RockConfig, ray_service, use_proxy: bool):
+async def _test_get_status_without_redis(rock_config: RockConfig, ray_service, use_rocklet: bool):
     """Helper function to test get_status without Redis"""
     # Create sandbox_manager without Redis
     sandbox_manager_no_redis = SandboxManager(
@@ -302,12 +302,12 @@ async def _test_get_status_without_redis(rock_config: RockConfig, ray_service, u
         # Wait for sandbox to be alive
         await check_sandbox_status_until_alive(sandbox_manager_no_redis, sandbox_id)
         
-        # If using proxy, wait for rocklet HTTP service to be ready
-        if use_proxy:
+        # If using rocklet, wait for rocklet HTTP service to be ready
+        if use_rocklet:
             await wait_for_rocklet_service_ready(sandbox_manager_no_redis, sandbox_id)
         
         # Test: get_status without Redis
-        status_response = await sandbox_manager_no_redis.get_status(sandbox_id, use_proxy=use_proxy)
+        status_response = await sandbox_manager_no_redis.get_status(sandbox_id, use_rocklet=use_rocklet)
         
         # Common assertions
         assert status_response.sandbox_id == sandbox_id
@@ -319,8 +319,8 @@ async def _test_get_status_without_redis(rock_config: RockConfig, ray_service, u
         assert status_response.image == "python:3.11"
         assert status_response.status is not None
         
-        # Additional assertions for proxy mode
-        if use_proxy:
+        # Additional assertions for rocklet mode
+        if use_rocklet:
             # Verify remote status was fetched (phases should be populated)
             assert "docker_run" in status_response.status
     finally:
@@ -330,14 +330,14 @@ async def _test_get_status_without_redis(rock_config: RockConfig, ray_service, u
 
 @pytest.mark.need_ray
 @pytest.mark.asyncio
-async def test_get_status_without_redis_without_proxy(rock_config: RockConfig, ray_init_shutdown, ray_service):
-    """Test get_status: without Redis, without proxy (use_proxy=False)"""
-    await _test_get_status_without_redis(rock_config, ray_service, use_proxy=False)
+async def test_get_status_without_redis_without_rocklet(rock_config: RockConfig, ray_init_shutdown, ray_service):
+    """Test get_status: without Redis, without rocklet (use_rocklet=False)"""
+    await _test_get_status_without_redis(rock_config, ray_service, use_rocklet=False)
 
 
-@pytest.mark.skip(reason="Skip this test after proxy port is fixed")
+@pytest.mark.skip(reason="Skip this test after rocklet port is fixed")
 @pytest.mark.need_ray
 @pytest.mark.asyncio
-async def test_get_status_without_redis_with_proxy(rock_config: RockConfig, ray_init_shutdown, ray_service):
-    """Test get_status: without Redis, with proxy (use_proxy=True)"""
-    await _test_get_status_without_redis(rock_config, ray_service, use_proxy=True)
+async def test_get_status_without_redis_with_rocklet(rock_config: RockConfig, ray_init_shutdown, ray_service):
+    """Test get_status: without Redis, with rocklet (use_rocklet=True)"""
+    await _test_get_status_without_redis(rock_config, ray_service, use_rocklet=True)
