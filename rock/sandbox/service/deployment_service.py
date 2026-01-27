@@ -1,4 +1,4 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 
 from rock.actions.sandbox.response import CommandResponse, State, SystemResourceMetrics
 from rock.actions.sandbox.sandbox_info import SandboxInfo
@@ -15,7 +15,9 @@ from rock.utils.format import parse_memory_size
 logger = init_logger(__name__)
 
 
-class AbstractDeploymentService():
+class AbstractDeploymentService(ABC):
+    """Abstract base class for deployment services implementing IDeploymentService."""
+    
     @abstractmethod
     async def is_alive(self, sandbox_id: str) -> bool:
         ...
@@ -34,25 +36,23 @@ class AbstractDeploymentService():
     async def stop(self, sandbox_id: str):
         """Stop sandbox."""
 
-    @abstractmethod
     async def get_mount(self, sandbox_id: str):
         """Get mount of sandbox."""
-        ...
+        return None
 
-    @abstractmethod
     async def get_sandbox_statistics(self, sandbox_id: str):
         """Get sandbox statistics."""
-        ...
+        return None
 
-    @abstractmethod
     async def commit(self, sandbox_id: str, image_tag: str, username: str, password: str) -> CommandResponse:
-        ...
+        """Commit sandbox to image."""
+        return None
 
-    @abstractmethod
     async def collect_system_resource_metrics(self) -> SystemResourceMetrics:
-        ...
+        """Collect system resource metrics."""
+        return None
 
-class RayDeploymentService():
+class RayDeploymentService(AbstractDeploymentService):
     def __init__(self, ray_namespace: str, ray_service: RayService):
         self._ray_namespace = ray_namespace
         self._ray_service = ray_service
