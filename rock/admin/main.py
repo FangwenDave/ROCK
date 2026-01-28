@@ -65,9 +65,15 @@ async def lifespan(app: FastAPI):
 
     # init sandbox service
     if args.role == "admin":
-        # init ray service
-        ray_service = RayService(rock_config.ray)
-        ray_service.init()
+        # Get deployment mode from config (ray or k8s)
+        deployment_mode = rock_config.deployment_mode
+        
+        # init ray service (only for ray mode)
+        if deployment_mode == "ray":
+            ray_service = RayService(rock_config.ray)
+            ray_service.init()
+        else:
+            ray_service = None  # K8S mode doesn't need Ray
 
         # init service
         if rock_config.runtime.enable_auto_clear:
@@ -77,6 +83,7 @@ async def lifespan(app: FastAPI):
                 ray_namespace=rock_config.ray.namespace,
                 ray_service=ray_service,
                 enable_runtime_auto_clear=True,
+                deployment_mode=deployment_mode,
             )
         else:
             sandbox_manager = GemManager(
@@ -85,6 +92,7 @@ async def lifespan(app: FastAPI):
                 ray_namespace=rock_config.ray.namespace,
                 ray_service=ray_service,
                 enable_runtime_auto_clear=False,
+                deployment_mode=deployment_mode,
             )
         set_sandbox_manager(sandbox_manager)
         warmup_service = WarmupService(rock_config.warmup)

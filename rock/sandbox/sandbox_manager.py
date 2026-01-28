@@ -64,12 +64,23 @@ class SandboxManager(BaseManager):
         ray_namespace: str = env_vars.ROCK_RAY_NAMESPACE,
         ray_service: RayService | None = None,
         enable_runtime_auto_clear: bool = False,
+        deployment_mode: str = "ray",  # "ray" or "k8s"
     ):
         super().__init__(
-            rock_config, redis_provider=redis_provider, enable_runtime_auto_clear=enable_runtime_auto_clear
+            rock_config, redis_provider=redis_provider, enable_runtime_auto_clear=enable_runtime_auto_clear, deployment_mode=deployment_mode
         )
         self._ray_namespace = ray_namespace
-        self._deployment_service = RayDeploymentService(ray_namespace=ray_namespace, ray_service=ray_service)
+        self._deployment_mode = deployment_mode
+        
+        # Initialize deployment service based on mode
+        if deployment_mode == "k8s":
+            from rock.sandbox.service.k8s.k8s_deployment_service import K8sDeploymentService
+            self._deployment_service = K8sDeploymentService(k8s_config=rock_config.k8s)
+            logger.info(f"SandboxManager initialized with K8S deployment mode, namespace: {rock_config.k8s_namespace or 'rock'}")
+        else:
+            self._deployment_service = RayDeploymentService(ray_namespace=ray_namespace, ray_service=ray_service)
+            logger.info(f"SandboxManager initialized with Ray deployment mode, namespace: {ray_namespace}")
+        
         self._proxy_service = SandboxProxyService(rock_config, redis_provider)
         logger.info("sandbox service init success")
 
@@ -152,7 +163,7 @@ class SandboxManager(BaseManager):
         host_ip = sandbox_info.get("host_ip")
         
         # 2. Determine status retrieval strategy
-        if use_rocklet and self._redis_provider:
+        if use_rocklet and self._redis_provider and self._deployment_mode != "k8s":
             # Use remote status check with parallel operations
             _, remote_status = await asyncio.gather(
                 self._update_expire_time(sandbox_id),

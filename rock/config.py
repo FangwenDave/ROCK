@@ -111,6 +111,14 @@ class RuntimeConfig:
 
 
 @dataclass
+class K8sConfig:
+    """Configuration for K8S deployment mode."""
+    namespace: str = "rock"
+    kubeconfig_path: str | None = None
+    templates: dict = field(default_factory=dict)  # K8S pod templates
+
+
+@dataclass
 class RockConfig:
     ray: RayConfig = field(default_factory=RayConfig)
     warmup: WarmupConfig = field(default_factory=WarmupConfig)
@@ -120,7 +128,24 @@ class RockConfig:
     oss: OssConfig = field(default_factory=OssConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     proxy_service: ProxyServiceConfig = field(default_factory=ProxyServiceConfig)
+    k8s: K8sConfig = field(default_factory=K8sConfig)
+    deployment_mode: str = "ray"  # "ray" or "k8s"
     nacos_provider: NacosConfigProvider | None = None
+    
+    @property
+    def k8s_namespace(self) -> str:
+        """Get K8S namespace."""
+        return self.k8s.namespace
+    
+    @property
+    def k8s_kubeconfig_path(self) -> str | None:
+        """Get K8S kubeconfig path."""
+        return self.k8s.kubeconfig_path
+    
+    @property
+    def k8s_templates(self) -> dict:
+        """Get K8S templates."""
+        return self.k8s.templates
 
     @classmethod
     def from_env(cls, config_path: str | None = None):
@@ -157,6 +182,10 @@ class RockConfig:
             kwargs["runtime"] = RuntimeConfig(**config["runtime"])
         if "proxy_service" in config:
             kwargs["proxy_service"] = ProxyServiceConfig(**config["proxy_service"])
+        if "k8s" in config:
+            kwargs["k8s"] = K8sConfig(**config["k8s"])
+        if "deployment_mode" in config:
+            kwargs["deployment_mode"] = config["deployment_mode"]
 
         return cls(**kwargs)
 

@@ -27,6 +27,7 @@ class BaseManager:
         rock_config: RockConfig,
         redis_provider: RedisProvider | None = None,
         enable_runtime_auto_clear: bool = False,
+        deployment_mode: str = "ray",
     ):
         self.rock_config = rock_config
         self._executor = get_executor()
@@ -36,7 +37,7 @@ class BaseManager:
         self._check_job_interval = 180
         self._sandbox_meta = {}
         self._setup_scheduler()
-        self.deployment_manager = DeploymentManager(rock_config, enable_runtime_auto_clear)
+        self.deployment_manager = DeploymentManager(rock_config, enable_runtime_auto_clear, deployment_mode)
 
         logger.info(f"SandboxService initialized with monitoring interval: {self._report_interval}s")
 

@@ -17,13 +17,13 @@ from rock.admin.proto.response import SandboxStartResponse, SandboxStatusRespons
 from rock.config import RockConfig
 from rock.deployments.config import DockerDeploymentConfig
 from rock.sandbox.sandbox_manager import SandboxManager
-from rock.sandbox.service.env_service import RayEnvService
+from rock.sandbox.service.env_service import AbstractEnvService, K8sEnvService, RayEnvService
 from rock.utils.providers import RedisProvider
 from rock.admin.core.ray_service import RayService
 
 
 class GemManager(SandboxManager):
-    _env_service: RayEnvService
+    _env_service: AbstractEnvService
     def __init__(
         self,
         rock_config: RockConfig,
@@ -31,9 +31,15 @@ class GemManager(SandboxManager):
         ray_namespace: str = env_vars.ROCK_RAY_NAMESPACE,
         ray_service: RayService | None = None,
         enable_runtime_auto_clear: bool = False,
+        deployment_mode: str = "ray",
     ):
-        super().__init__(rock_config, redis_provider, ray_namespace, ray_service, enable_runtime_auto_clear)
-        self._env_service = RayEnvService(ray_namespace=ray_namespace, ray_service=ray_service)
+        super().__init__(rock_config, redis_provider, ray_namespace, ray_service, enable_runtime_auto_clear, deployment_mode)
+        # Initialize env service based on deployment mode
+        if deployment_mode == "k8s":
+            self._env_service = K8sEnvService(k8s_config=rock_config.k8s)
+        else:
+            # Default to Ray mode
+            self._env_service = RayEnvService(ray_namespace=ray_namespace, ray_service=ray_service)
 
     async def env_make(self, env_id: str) -> EnvMakeResponse:
         config = DockerDeploymentConfig(image=env_vars.ROCK_ENVHUB_DEFAULT_DOCKER_IMAGE)

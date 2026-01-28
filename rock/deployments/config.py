@@ -7,6 +7,7 @@ provides settings specific to its deployment environment.
 """
 
 from abc import abstractmethod
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -195,6 +196,69 @@ class RemoteDeploymentConfig(DeploymentConfig):
         from rock.deployments.remote import RemoteDeployment
 
         return RemoteDeployment.from_config(self)
+
+
+class K8sProviderType(str, Enum):
+    """K8s provider types."""
+    BATCHSANDBOX = "batchsandbox"
+
+
+class K8sDeploymentConfig(DeploymentConfig):
+    """Configuration for K8s-based deployment."""
+    
+    # Basic deployment settings (user-customizable)
+    image: str = "hub.docker.alibaba-inc.com/chatos/python:3.11"
+    """Docker image for the sandbox container."""
+    
+    memory: str = "2g"
+    """Memory allocation for the container (e.g., '2g', '4096m')."""
+    
+    cpus: float = 1.0
+    """Number of CPU cores to allocate."""
+    
+    container_name: str | None = None
+    """Name for the container. If None, a random name will be generated."""
+    
+    auto_clear_time_minutes: int = 30
+    """Automatic cleanup time in minutes."""
+    
+    template_name: str = "default"
+    """Name of the K8S template to use from configuration file."""
+    
+    type: Literal["k8s"] = "k8s"
+    """Deployment type discriminator."""
+    
+    # Internal field (not user-customizable)
+    provider_type: K8sProviderType = K8sProviderType.BATCHSANDBOX
+    """Type of K8s provider to use. Internal use only."""
+    
+    @property
+    def auto_clear_time(self) -> int:
+        """Get auto clear time in minutes for compatibility."""
+        return self.auto_clear_time_minutes
+    
+    def get_deployment(self) -> AbstractDeployment:
+        """Create and return the deployment instance.
+        
+        This method is required by the DeploymentConfig interface.
+        However, for K8s we'll use the K8sDeploymentService directly.
+        """
+        raise NotImplementedError("K8s deployments should use K8sDeploymentService directly")
+    
+    @classmethod
+    def from_request(cls, request: SandboxStartRequest):
+        """Create K8sDeploymentConfig from SandboxStartRequest.
+        
+        Args:
+            request: SandboxStartRequest object
+            
+        Returns:
+            K8sDeploymentConfig instance
+        """
+        return cls(
+            **request.model_dump(exclude={"sandbox_id"}),
+            container_name=request.sandbox_id
+        )
 
 
 def get_deployment(config: DeploymentConfig) -> AbstractDeployment:
