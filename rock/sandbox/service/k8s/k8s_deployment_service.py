@@ -2,7 +2,7 @@
 
 from typing import Any, Dict
 
-from rock.actions.sandbox.response import State
+from rock.actions.sandbox.response import State, SystemResourceMetrics
 from rock.actions.sandbox.sandbox_info import SandboxInfo
 from rock.config import K8sConfig
 from rock.deployments.config import K8sDeploymentConfig
@@ -250,3 +250,28 @@ class K8sDeploymentService(AbstractDeploymentService):
         except Exception as e:
             logger.warning(f"Failed to get runtime for sandbox {sandbox_id}: {e}")
             return None
+    
+    async def collect_system_resource_metrics(self) -> SystemResourceMetrics:
+        """Collect system resource metrics.
+        
+        For K8S deployment mode, this is a mock implementation.
+        TODO: Implement actual K8S cluster resource collection via Kubernetes Metrics API.
+        
+        Returns:
+            SystemResourceMetrics with mock values
+        """
+        logger.debug("Collecting system resource metrics (mock implementation)")
+        
+        # Mock values - return empty metrics
+        # In the future, this should query K8S cluster resources via:
+        # - Kubernetes Metrics API (metrics.k8s.io/v1beta1)
+        # - kubectl top nodes equivalent
+        # - Custom Resource Definitions or Prometheus metrics
+        return SystemResourceMetrics(
+            total_cpu=0.0,
+            total_memory=0.0,
+            available_cpu=0.0,
+            available_memory=0.0,
+            gpu_count=0,
+            available_gpu=0,
+        )
