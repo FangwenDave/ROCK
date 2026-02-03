@@ -6,7 +6,7 @@ from rock.deployments.config import DeploymentConfig
 
 class AbstractOperator(ABC):
     @abstractmethod
-    async def submit(self, config: DeploymentConfig) -> SandboxInfo:
+    async def submit(self, config: DeploymentConfig, user_info: dict = {}) -> SandboxInfo:
         ...
 
     @abstractmethod
