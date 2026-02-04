@@ -22,7 +22,7 @@ from rock.admin.scheduler.scheduler import SchedulerProcess
 from rock.config import RockConfig
 from rock.logger import init_logger
 from rock.sandbox.gem_manager import GemManager
-from rock.sandbox.operator.factory import OperatorFactory
+from rock.sandbox.operator.factory import OperatorContext, OperatorFactory
 from rock.sandbox.service.sandbox_proxy_service import SandboxProxyService
 from rock.sandbox.service.warmup_service import WarmupService
 from rock.utils import EAGLE_EYE_TRACE_ID, sandbox_id_ctx_var, trace_id_ctx_var
@@ -71,8 +71,12 @@ async def lifespan(app: FastAPI):
         ray_service = RayService(rock_config.ray)
         ray_service.init()
 
-        # create operator using factory
-        operator = OperatorFactory.create_operator(runtime_config=rock_config.runtime, ray_service=ray_service)
+        # create operator using factory with context pattern
+        operator_context = OperatorContext(
+            runtime_config=rock_config.runtime,
+            ray_service=ray_service,
+        )
+        operator = OperatorFactory.create_operator(operator_context)
 
         # init service
         if rock_config.runtime.enable_auto_clear:
