@@ -71,6 +71,8 @@ class SandboxManager(BaseManager):
         self._ray_namespace = ray_namespace
         self._operator = operator
         self._aes_encrypter = AESEncryption()
+        if redis_provider:
+            self._operator.set_redis_provider(redis_provider)
         logger.info("sandbox service init success")
 
     async def refresh_aes_key(self):
@@ -214,70 +216,26 @@ class SandboxManager(BaseManager):
 
     @monitor_sandbox_operation()
     async def get_status(self, sandbox_id, use_rocklet: bool = False) -> SandboxStatusResponse:
-        """
-        Get sandbox status with optional remote health check.
-
-        Note: The use_rocklet parameter is deprecated and will be removed in a future version.
-
-        Args:
-            sandbox_id: The sandbox identifier
-            use_rocklet: If True, performs remote status check and alive verification (default: False)
-
-        Returns:
-            SandboxStatusResponse with complete status information
-        """
-        # 1. Get sandbox_info (unified exception handling)ß
-        sandbox_info = await self._get_sandbox_info(sandbox_id)
-        host_ip = sandbox_info.get("host_ip")
-
-        # 2. Determine status retrieval strategy
         if use_rocklet and self._redis_provider:
-            # Use remote status check with parallel operations
-            _, remote_status = await asyncio.gather(
-                self._update_expire_time(sandbox_id),
-                self.get_remote_status(sandbox_id, host_ip),
-            )
-
-            # Update sandbox_info with remote status
-            sandbox_info.update(remote_status.to_dict())
-
-            # Check alive status
+            sandbox_info: SandboxInfo = await build_sandbox_from_redis(self._redis_provider, sandbox_id)
+            host_ip = sandbox_info.get("host_ip")
+            remote_status = await self.get_remote_status(sandbox_id, host_ip)
             is_alive = await self._check_alive_status(sandbox_id, host_ip, remote_status)
-            if is_alive:
-                sandbox_info["state"] = State.RUNNING
-
-            status = remote_status.phases
-            port_mapping = remote_status.get_port_mapping()
+            sandbox_info.update(remote_status.to_dict())
         else:
-            # Fallback to deployment service status
-            deployment_info = await self._operator.get_status(sandbox_id)
-
-            # Merge deployment info into sandbox_info
-            if self._redis_provider:
-                sandbox_info = await self.build_sandbox_info_from_redis(sandbox_id, deployment_info)
-            else:
-                sandbox_info.update(deployment_info)
-
-            # Update expire time
-            await self._update_expire_time(sandbox_id)
-
-            status = sandbox_info.get("phases")
-            port_mapping = sandbox_info.get("port_mapping")
+            sandbox_info: SandboxInfo = await self._operator.get_status(sandbox_id=sandbox_id)
             is_alive = sandbox_info.get("state") == State.RUNNING
-
-        # 3. Persist to Redis if available
+        self._update_sandbox_alive_info(sandbox_info, is_alive)
         if self._redis_provider:
             await self._redis_provider.json_set(alive_sandbox_key(sandbox_id), "$", sandbox_info)
-            logger.info(f"sandbox {sandbox_id} status updated, write to redis")
-
-        # 4. Build and return unified response
+            (self._update_expire_time(sandbox_id),)
         return SandboxStatusResponse(
             sandbox_id=sandbox_id,
-            status=status,
-            port_mapping=port_mapping,
+            status=sandbox_info.get("phases"),
+            port_mapping=sandbox_info.get("port_mapping"),
             state=sandbox_info.get("state"),
             host_name=sandbox_info.get("host_name"),
-            host_ip=host_ip,
+            host_ip=sandbox_info.get("host_ip"),
             is_alive=is_alive,
             image=sandbox_info.get("image"),
             swe_rex_version=swe_version,
@@ -301,22 +259,6 @@ class SandboxManager(BaseManager):
             sandbox_info.update(remote_info)
         else:
             sandbox_info = deployment_info
-        return sandbox_info
-
-    async def _get_sandbox_info(self, sandbox_id: str) -> SandboxInfo:
-        """Get sandbox info, prioritize Redis, fallback to Ray Actor"""
-        if self._redis_provider:
-            sandbox_info = await build_sandbox_from_redis(self._redis_provider, sandbox_id)
-        else:
-            actor_name = self.deployment_manager.get_actor_name(sandbox_id)
-            sandbox_actor = await self._ray_service.async_ray_get_actor(actor_name, self._ray_namespace)
-            if sandbox_actor is None:
-                raise Exception(f"sandbox {sandbox_id} not found to get status")
-            sandbox_info = await self._ray_service.async_ray_get(sandbox_actor.sandbox_info.remote())
-
-        if sandbox_info is None:
-            raise Exception(f"sandbox {sandbox_id} not found to get status")
-
         return sandbox_info
 
     async def _check_alive_status(self, sandbox_id: str, host_ip: str, remote_status: ServiceStatus) -> bool:
