@@ -35,6 +35,7 @@ class BaseActor:
     _experiment_id: str = "default"
     _namespace = "default"
     _metrics_endpoint = ""
+    _user_defined_tags: dict = {}
 
     def __init__(
         self,
@@ -151,6 +152,8 @@ class BaseActor:
 
             if metrics.get("cpu") is not None:
                 attributes = {"sandbox_id": sandbox_id, "env": self._env, "role": self._role, "host": self.host}
+                if self._user_defined_tags is not None:
+                    attributes.update(self._user_defined_tags)
                 attributes["user_id"] = self._user_id
                 attributes["experiment_id"] = self._experiment_id
                 attributes["namespace"] = self._namespace
@@ -181,6 +184,12 @@ class BaseActor:
 
     def get_metrics_endpoint(self) -> str:
         return self._metrics_endpoint
+
+    def set_user_defined_tags(self, user_defined_tags: dict):
+        self._user_defined_tags = user_defined_tags
+
+    def get_user_defined_tags(self) -> dict:
+        return self._user_defined_tags
 
     async def get_sandbox_statistics(self):
         """Get sandbox statistics - default implementation returns None"""

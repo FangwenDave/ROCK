@@ -130,7 +130,9 @@ class SandboxManager(BaseManager):
 
             self.validate_sandbox_spec(self.rock_config.runtime, config)
             sandbox_actor: SandboxActor = await deployment.creator_actor(actor_name)
+            # merge these two monitor related metadata later
             sandbox_actor.set_metrics_endpoint.remote(self.rock_config.runtime.metrics_endpoint)
+            sandbox_actor.set_user_defined_tags.remote(self.rock_config.runtime.user_defined_tags)
             sandbox_actor.start.remote()
             self._setup_sandbox_actor_metadata(sandbox_actor, user_info)
 
