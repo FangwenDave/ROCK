@@ -84,7 +84,6 @@ class SandboxManager(BaseManager):
             logger.error(f"update aes key failed, error: {e}")
             raise InternalServerRockError(f"update aes key failed, {str(e)}")
 
-
     async def _check_sandbox_exists_in_redis(self, config: DeploymentConfig):
         if isinstance(config, DockerDeploymentConfig) and config.container_name:
             sandbox_id = config.container_name
@@ -131,6 +130,7 @@ class SandboxManager(BaseManager):
 
             self.validate_sandbox_spec(self.rock_config.runtime, config)
             sandbox_actor: SandboxActor = await deployment.creator_actor(actor_name)
+            sandbox_actor.set_metrics_endpoint.remote(self.rock_config.runtime.metrics_endpoint)
             sandbox_actor.start.remote()
             self._setup_sandbox_actor_metadata(sandbox_actor, user_info)
 
