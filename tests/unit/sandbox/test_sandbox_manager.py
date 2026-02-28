@@ -185,10 +185,10 @@ async def test_get_actor_not_exist_raises_value_error(sandbox_manager):
 
 @pytest.mark.need_ray
 @pytest.mark.asyncio
-async def test_enforce_standard_spec(sandbox_manager):
-    """Test that enforce_standard_spec forces sandbox to use standard spec."""
-    # Enable enforce_standard_spec
-    sandbox_manager.rock_config.runtime.enforce_standard_spec = True
+async def test_use_standard_spec_only(sandbox_manager):
+    """Test that use_standard_spec_only forces sandbox to use standard spec."""
+    # Enable use_standard_spec_only
+    sandbox_manager.rock_config.runtime.use_standard_spec_only = True
     sandbox_manager.rock_config.runtime.standard_spec.cpus = 1
     sandbox_manager.rock_config.runtime.standard_spec.memory = "2g"
 
@@ -221,15 +221,15 @@ async def test_enforce_standard_spec(sandbox_manager):
         # Cleanup
         await sandbox_manager.stop(sandbox_id)
         # Reset the flag
-        sandbox_manager.rock_config.runtime.enforce_standard_spec = False
+        sandbox_manager.rock_config.runtime.use_standard_spec_only = False
 
 
 @pytest.mark.need_ray
 @pytest.mark.asyncio
-async def test_enforce_standard_spec_disabled(sandbox_manager):
-    """Test that sandbox uses requested spec when enforce_standard_spec is disabled."""
-    # Ensure enforce_standard_spec is disabled
-    sandbox_manager.rock_config.runtime.enforce_standard_spec = False
+async def test_use_standard_spec_only_disabled(sandbox_manager):
+    """Test that sandbox uses requested spec when use_standard_spec_only is disabled."""
+    # Ensure use_standard_spec_only is disabled
+    sandbox_manager.rock_config.runtime.use_standard_spec_only = False
 
     # Create sandbox with custom specs (within allowed limits)
     requested_cpus = 1
