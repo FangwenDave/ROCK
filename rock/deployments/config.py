@@ -76,7 +76,7 @@ class DockerDeploymentConfig(DeploymentConfig):
     platform: str | None = None
     """Target platform for the Docker image (e.g., 'linux/amd64', 'linux/arm64')."""
 
-    remove_container: bool = True
+    remove_container: bool = False
     """Whether to remove the container after it stops running."""
 
     auto_clear_time_minutes: int = 30
