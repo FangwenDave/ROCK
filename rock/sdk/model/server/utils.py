@@ -1,11 +1,24 @@
 import json
 import os
+import time
 from collections.abc import Callable
 from functools import wraps
 
 from fastapi.responses import JSONResponse
 
+from rock.admin.metrics.monitor import MetricsMonitor
 from rock.sdk.model.server.config import TRAJ_FILE
+
+_metrics_monitor: MetricsMonitor | None = None
+
+
+def _get_or_create_fallback_metrics_monitor() -> MetricsMonitor:
+    global _metrics_monitor
+    if _metrics_monitor is None:
+        endpoint = os.getenv("ROCK_METRICS_ENDPOINT", "localhost:4318/v1/metrics")
+        _metrics_monitor = MetricsMonitor.create(metrics_endpoint=endpoint)
+        _metrics_monitor._register_gauge("request.llm.rt", "total execution time for request", "ms")
+    return _metrics_monitor
 
 
 def _write_traj(data: dict):
@@ -27,7 +40,11 @@ def record_traj(func: Callable):
     async def wrapper(*args, **kwargs):
         # Extract body from args/kwargs for logging
         body = args[0] if args else kwargs.get("body")
+
+        start_time = time.perf_counter()
         result = await func(*args, **kwargs)
+        rt = time.perf_counter() - start_time
+
         # JSONResponse.body is bytes, dict is returned directly
         if isinstance(result, JSONResponse):
             response_data = json.loads(result.body)
@@ -39,6 +56,10 @@ def record_traj(func: Callable):
                 "response": response_data,
             }
         )
+        monitor = _get_or_create_fallback_metrics_monitor()
+        attr = {"type": "chat_completions"}
+        attr["sandbox_id"] = os.getenv("ROCK_SANDBOX_ID", "unknown")
+        monitor.record_gauge_by_name("request.llm.rt", rt, attributes=attr)
         return result
 
     return wrapper
