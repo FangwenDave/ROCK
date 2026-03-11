@@ -15,7 +15,7 @@ MODEL_SERVICE_REQUEST_COUNT = "model_service.request.count"
 _metrics_monitor: MetricsMonitor | None = None
 
 
-def _get_or_create_fallback_metrics_monitor() -> MetricsMonitor:
+def _get_or_create_metrics_monitor() -> MetricsMonitor:
     global _metrics_monitor
     if _metrics_monitor is None:
         endpoint = os.getenv("ROCK_METRICS_ENDPOINT", "localhost:4318/v1/metrics")
@@ -60,7 +60,7 @@ def record_traj(func: Callable):
                 "response": response_data,
             }
         )
-        monitor = _get_or_create_fallback_metrics_monitor()
+        monitor = _get_or_create_metrics_monitor()
         attr = {"type": "chat_completions"}
         attr["sandbox_id"] = os.getenv("ROCK_SANDBOX_ID", "unknown")
         monitor.record_gauge_by_name(MODEL_SERVICE_REQUEST_RT, rt, attributes=attr)
