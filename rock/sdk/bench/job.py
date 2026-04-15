@@ -285,6 +285,8 @@ class Job:
 
         If job_name is None, generate one with the format:
         {dataset_name}_{task_name if single task}_{uuid}
+        
+        For dataset_name and task_name, only the last segment after "/" is used.
         """
         if self._config.job_name is not None:
             # User has set a custom job_name, keep it
@@ -297,12 +299,16 @@ class Job:
         if self._config.datasets:
             dataset = self._config.datasets[0]
             if hasattr(dataset, "name") and dataset.name:
-                parts.append(dataset.name)
+                # Only use the last segment after "/"
+                dataset_name = dataset.name.rsplit("/", 1)[-1]
+                parts.append(dataset_name)
 
             # Get task name if there's only one task
             task_names = dataset.task_names
             if task_names and len(task_names) == 1:
-                parts.append(task_names[0])
+                # Only use the last segment after "/"
+                task_name = task_names[0].rsplit("/", 1)[-1]
+                parts.append(task_name)
 
         # Add short UUID (8 characters)
         parts.append(uuid.uuid4().hex[:8])
