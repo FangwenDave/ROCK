@@ -141,6 +141,15 @@ class UserInfo(TypedDict, total=False):
     rock_authorization: str
 
 
+class TaskSetSpec(BaseModel):
+    taskTypes: list[str] | None = Field(default=None)
+    targetWorkers: list[str] | None = Field(default=None)
+
+
+class CreateTaskSetRequest(BaseModel):
+    spec: TaskSetSpec = Field(default_factory=TaskSetSpec)
+
+
 class ClusterInfo(TypedDict, total=False):
     cluster_name: str
 
