@@ -360,3 +360,47 @@ class TestWaitPhaseAttribution:
         assert len(soft) == 1
         assert soft[0][0] == "collect"
         assert soft[0][1] == "ProcessTimeout"
+
+
+class TestObservabilityEndToEnd:
+    async def test_success_path_emits_no_events(self, monkeypatch):
+        fake = _RecordingReporter()
+        monkeypatch.setattr(observability, "_REPORTER", fake)
+        mock_sandbox = _make_mock_sandbox()
+        with patch("rock.sdk.job.executor.Sandbox", return_value=mock_sandbox):
+            executor = JobExecutor()
+            await executor.run(ScatterOperator(size=1), BashJobConfig(script="echo hi", job_name="t"))
+        assert fake.events == []
+
+    async def test_labels_contain_sandbox_and_job_identity(self, monkeypatch):
+        fake = _RecordingReporter()
+        monkeypatch.setattr(observability, "_REPORTER", fake)
+        mock_sandbox = _make_mock_sandbox()
+        nohup_obs = MagicMock()
+        nohup_obs.output = "bad"
+        nohup_obs.exit_code = 1
+        mock_sandbox.handle_nohup_output = AsyncMock(return_value=nohup_obs)
+        with patch("rock.sdk.job.executor.Sandbox", return_value=mock_sandbox):
+            executor = JobExecutor()
+            await executor.run(ScatterOperator(size=1), BashJobConfig(script="x", job_name="job-xyz"))
+        soft = [e for e in fake.events if e[2] == "soft"]
+        assert len(soft) == 1
+        labels = soft[0][3]
+        assert labels["job_name"] == "job-xyz"
+        assert labels["sandbox_id"] == "sb-test"
+        assert labels["trial_type"] == "bash"
+
+    async def test_hard_fail_counted_exactly_once(self, monkeypatch):
+        from rock.sdk.job.trial.bash import BashTrial
+
+        fake = _RecordingReporter()
+        monkeypatch.setattr(observability, "_REPORTER", fake)
+        mock_sandbox = _make_mock_sandbox()
+        with patch("rock.sdk.job.executor.Sandbox", return_value=mock_sandbox):
+            executor = JobExecutor()
+            trial = BashTrial(BashJobConfig(script="x", job_name="t"))
+            trial.setup = AsyncMock(side_effect=ValueError("boom"))
+            with pytest.raises(ValueError):
+                await executor._do_submit(trial)
+        # exactly one hard event despite re-raise propagating through _do_submit
+        assert len([e for e in fake.events if e[2] == "hard"]) == 1

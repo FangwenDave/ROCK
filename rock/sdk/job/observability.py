@@ -123,6 +123,10 @@ def _extract_labels(args: tuple) -> dict[str, str]:
             trial = a
         elif hasattr(a, "sandbox_id"):
             sandbox = a
+        # Stop once we have a full (trial, sandbox) pair so later positional
+        # args (e.g. the nohup observation) can't clobber them.
+        if trial is not None and sandbox is not None:
+            break
 
     labels = {
         "trial_type": "unknown",
