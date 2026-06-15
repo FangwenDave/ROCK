@@ -13,8 +13,13 @@ log) when ROCK_JOB_METRICS_HIGH_CARDINALITY_LABELS is false.
 
 from __future__ import annotations
 
+import asyncio
+import functools
+from collections.abc import Callable
+
 from rock import env_vars
 from rock.logger import init_logger
+from rock.sdk.job.result import TrialResult
 
 logger = init_logger(__name__)
 
@@ -91,3 +96,103 @@ def get_reporter() -> JobMetricsReporter:
     if _REPORTER is None:
         _REPORTER = JobMetricsReporter()
     return _REPORTER
+
+
+def _trial_type(trial) -> str:
+    name = type(trial).__name__
+    base = name[:-5] if name.endswith("Trial") else name
+    return base.lower().lstrip("_")
+
+
+def _extract_labels(args: tuple) -> dict[str, str]:
+    """Best-effort label extraction from a decorated method's positional args.
+
+    Duck-typed (no imports of AbstractTrial/TrialClient/Sandbox) to avoid
+    circular imports:
+      - TrialClient : has both ``.trial`` and ``.sandbox``
+      - AbstractTrial: has ``._config``
+      - Sandbox     : has ``.sandbox_id``
+    """
+    trial = None
+    sandbox = None
+    for a in args:
+        if hasattr(a, "trial") and hasattr(a, "sandbox"):
+            trial = a.trial
+            sandbox = a.sandbox
+        elif hasattr(a, "_config"):
+            trial = a
+        elif hasattr(a, "sandbox_id"):
+            sandbox = a
+
+    labels = {
+        "trial_type": "unknown",
+        "job_name": "unknown",
+        "experiment_id": "unknown",
+        "namespace": "unknown",
+        "sandbox_id": "unknown",
+    }
+    if trial is not None:
+        cfg = trial._config
+        labels["trial_type"] = _trial_type(trial)
+        labels["job_name"] = str(getattr(cfg, "job_name", None) or "unknown")
+        labels["experiment_id"] = str(getattr(cfg, "experiment_id", None) or "unknown")
+        labels["namespace"] = str(getattr(cfg, "namespace", None) or "unknown")
+    if sandbox is not None:
+        labels["sandbox_id"] = str(getattr(sandbox, "sandbox_id", None) or "unknown")
+    return labels
+
+
+def _emit_soft(reporter, phase: str, result, labels: dict[str, str]) -> None:
+    items = result if isinstance(result, list) else [result]
+    for r in items:
+        if isinstance(r, TrialResult) and r.exception_info is not None:
+            reporter.record_exception(
+                phase=phase,
+                exc_type=r.exception_info.exception_type or "unknown",
+                severity="soft",
+                labels=labels,
+            )
+
+
+def monitor_job_phase(phase: str) -> Callable:
+    """Decorate a JobExecutor phase method to emit log+metric on exceptions.
+
+    - Hard fail (method raises): record severity="hard" then re-raise.
+    - Soft fail (method returns TrialResult(s) carrying exception_info):
+      record severity="soft" for each.
+    Only the leaf phase methods are decorated; outer _do_submit/_do_wait are
+    NOT decorated, so a re-raised hard fail is counted exactly once.
+    """
+
+    def deco(f):
+        if asyncio.iscoroutinefunction(f):
+
+            @functools.wraps(f)
+            async def awrapper(self, *args, **kwargs):
+                reporter = get_reporter()
+                labels = _extract_labels(args)
+                try:
+                    result = await f(self, *args, **kwargs)
+                except Exception as e:
+                    reporter.record_exception(phase, type(e).__name__, "hard", labels)
+                    raise
+                _emit_soft(reporter, phase, result, labels)
+                return result
+
+            return awrapper
+
+        @functools.wraps(f)
+        def wrapper(self, *args, **kwargs):
+            reporter = get_reporter()
+            labels = _extract_labels(args)
+            try:
+                result = f(self, *args, **kwargs)
+            except Exception as e:
+                reporter.record_exception(phase, type(e).__name__, "hard", labels)
+                raise
+            _emit_soft(reporter, phase, result, labels)
+            return result
+
+        return wrapper
+
+    return deco

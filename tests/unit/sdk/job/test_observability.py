@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 from rock import env_vars
 from rock.sdk.job import observability
-from rock.sdk.job.observability import JobMetricsReporter
+from rock.sdk.job.observability import JobMetricsReporter, monitor_job_phase
+from rock.sdk.job.result import ExceptionInfo, TrialResult
 
 
 class TestEnvVars:
@@ -82,3 +85,89 @@ class TestReporter:
         r1 = observability.get_reporter()
         r2 = observability.get_reporter()
         assert r1 is r2
+
+
+class _FakeReporter:
+    def __init__(self):
+        self.events = []  # (phase, exc_type, severity, labels)
+
+    def record_exception(self, phase, exc_type, severity, labels):
+        self.events.append((phase, exc_type, severity, labels))
+
+
+class _FakeTrial:
+    """Duck-typed AbstractTrial: only needs ._config."""
+
+    def __init__(self, config):
+        self._config = config
+
+
+class _Cfg:
+    def __init__(self, job_name="j", experiment_id="e", namespace="n"):
+        self.job_name = job_name
+        self.experiment_id = experiment_id
+        self.namespace = namespace
+
+
+class _Holder:
+    """Stand-in for JobExecutor — hosts decorated methods."""
+
+    @monitor_job_phase("setup")
+    async def boom_async(self, trial):
+        raise ValueError("nope")
+
+    @monitor_job_phase("collect")
+    async def soft_async(self, trial):
+        return TrialResult(task_name="t", exception_info=ExceptionInfo(exception_type="BashExitCode"))
+
+    @monitor_job_phase("collect")
+    async def ok_async(self, trial):
+        return TrialResult(task_name="t")
+
+    @monitor_job_phase("launch")
+    def boom_sync(self, trial):
+        raise RuntimeError("sync-nope")
+
+
+class TestDecorator:
+    async def test_hard_fail_emits_once_and_reraises(self, monkeypatch):
+        fake = _FakeReporter()
+        monkeypatch.setattr(observability, "_REPORTER", fake)
+        h = _Holder()
+        with pytest.raises(ValueError, match="nope"):
+            await h.boom_async(_FakeTrial(_Cfg(job_name="j1")))
+        assert len(fake.events) == 1
+        phase, exc_type, severity, labels = fake.events[0]
+        assert phase == "setup"
+        assert exc_type == "ValueError"
+        assert severity == "hard"
+        assert labels["job_name"] == "j1"
+        assert labels["trial_type"] == "fake"  # _FakeTrial -> "fake"
+
+    async def test_soft_fail_emitted_from_return_value(self, monkeypatch):
+        fake = _FakeReporter()
+        monkeypatch.setattr(observability, "_REPORTER", fake)
+        h = _Holder()
+        await h.soft_async(_FakeTrial(_Cfg()))
+        assert len(fake.events) == 1
+        phase, exc_type, severity, _ = fake.events[0]
+        assert phase == "collect"
+        assert exc_type == "BashExitCode"
+        assert severity == "soft"
+
+    async def test_clean_return_emits_nothing(self, monkeypatch):
+        fake = _FakeReporter()
+        monkeypatch.setattr(observability, "_REPORTER", fake)
+        h = _Holder()
+        await h.ok_async(_FakeTrial(_Cfg()))
+        assert fake.events == []
+
+    def test_sync_hard_fail_emits(self, monkeypatch):
+        fake = _FakeReporter()
+        monkeypatch.setattr(observability, "_REPORTER", fake)
+        h = _Holder()
+        with pytest.raises(RuntimeError, match="sync-nope"):
+            h.boom_sync(_FakeTrial(_Cfg()))
+        assert len(fake.events) == 1
+        assert fake.events[0][0] == "launch"
+        assert fake.events[0][2] == "hard"
