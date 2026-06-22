@@ -14,6 +14,7 @@ log) when ROCK_JOB_METRICS_HIGH_CARDINALITY_LABELS is false.
 from __future__ import annotations
 
 import asyncio
+import atexit
 import functools
 from collections.abc import Callable
 
@@ -37,6 +38,8 @@ class JobMetricsReporter:
     def __init__(self) -> None:
         self._enabled = False
         self._counter = None
+        self._reader = None
+        self._provider = None
         endpoint = env_vars.ROCK_JOB_METRICS_OTLP_ENDPOINT
         if endpoint:
             self._init_otel(endpoint)
@@ -55,7 +58,10 @@ class JobMetricsReporter:
                 description="Count of job execution exceptions (hard + soft)",
                 unit="1",
             )
+            self._reader = reader
+            self._provider = provider
             self._enabled = True
+            atexit.register(self.shutdown)
             logger.info("job metrics reporter enabled endpoint=%s", endpoint)
         except Exception as e:  # noqa: BLE001 — never let metrics setup break jobs
             logger.warning("job metrics reporter init failed, log-only mode: %s", e)
@@ -85,6 +91,24 @@ class JobMetricsReporter:
                 **self._filter_labels(labels),
             }
             self._counter.add(1, attrs)
+
+    def shutdown(self) -> None:
+        """Flush buffered metrics before the process exits.
+
+        PeriodicExportingMetricReader exports on an interval, so a short-lived
+        job can die with its last exceptions still buffered. Registered via
+        atexit so the provider force-flushes on a clean interpreter exit.
+        Idempotent and exception-isolated: teardown must never raise.
+        """
+        provider = self._provider
+        if provider is None:
+            return
+        self._provider = None
+        self._enabled = False
+        try:
+            provider.shutdown()
+        except Exception:  # noqa: BLE001 — never let metrics teardown break exit
+            logger.warning("job metrics reporter shutdown failed", exc_info=True)
 
 
 _REPORTER: JobMetricsReporter | None = None

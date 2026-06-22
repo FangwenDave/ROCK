@@ -87,6 +87,52 @@ class TestReporter:
         assert r1 is r2
 
 
+class _FakeProvider:
+    def __init__(self, raises=False):
+        self.shutdown_calls = 0
+        self._raises = raises
+
+    def shutdown(self):
+        self.shutdown_calls += 1
+        if self._raises:
+            raise RuntimeError("provider shutdown blew up")
+
+
+class TestShutdown:
+    def test_shutdown_flushes_provider_and_disables(self, monkeypatch):
+        monkeypatch.delenv("ROCK_JOB_METRICS_OTLP_ENDPOINT", raising=False)
+        reporter = JobMetricsReporter()
+        provider = _FakeProvider()
+        reporter._provider = provider
+        reporter._enabled = True
+        reporter.shutdown()
+        assert provider.shutdown_calls == 1
+        assert reporter._enabled is False
+
+    def test_shutdown_is_idempotent(self, monkeypatch):
+        monkeypatch.delenv("ROCK_JOB_METRICS_OTLP_ENDPOINT", raising=False)
+        reporter = JobMetricsReporter()
+        provider = _FakeProvider()
+        reporter._provider = provider
+        reporter.shutdown()
+        reporter.shutdown()
+        assert provider.shutdown_calls == 1
+
+    def test_shutdown_swallows_provider_errors(self, monkeypatch):
+        monkeypatch.delenv("ROCK_JOB_METRICS_OTLP_ENDPOINT", raising=False)
+        reporter = JobMetricsReporter()
+        reporter._provider = _FakeProvider(raises=True)
+        # must never raise — observability cannot break process teardown
+        reporter.shutdown()
+        assert reporter._enabled is False
+
+    def test_shutdown_noop_without_provider(self, monkeypatch):
+        monkeypatch.delenv("ROCK_JOB_METRICS_OTLP_ENDPOINT", raising=False)
+        reporter = JobMetricsReporter()
+        assert reporter._provider is None
+        reporter.shutdown()  # no provider -> clean no-op
+
+
 class _FakeReporter:
     def __init__(self):
         self.events = []  # (phase, exc_type, severity, labels)
