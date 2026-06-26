@@ -81,7 +81,7 @@ class Job:
         # G5: surface first non-empty output / non-zero exit code from sub-trials
         raw_output = next((t.raw_output for t in flat if t.raw_output), "")
         exit_code = next((t.exit_code for t in flat if t.exit_code != 0), 0)
-        return JobResult(
+        result = JobResult(
             job_id=self._config.job_name or "",
             status=JobStatus.COMPLETED if all_success else JobStatus.FAILED,
             labels=self._config.labels,
@@ -89,3 +89,56 @@ class Job:
             raw_output=raw_output,
             exit_code=exit_code,
         )
+
+        # Report tracking if adapter is available (never raises)
+        self._report_tracking(result)
+
+        return result
+
+    def _report_tracking(self, result: JobResult) -> None:
+        """Resolve adapter and report job metrics. Never raises."""
+        from rock.logger import init_logger
+        from rock.sdk.job.adapter import resolve_tracking_adapter
+
+        adapter = resolve_tracking_adapter()
+        if adapter is None:
+            return
+
+        try:
+            config = self._config
+            project = config.namespace or config.experiment_id or config.job_name or "rock-job"
+            run_name = config.job_name or "default"
+            init_config = {
+                "job_name": config.job_name or "",
+                "namespace": config.namespace or "",
+                "experiment_id": config.experiment_id or "",
+            }
+            adapter.init(project=project, run_name=run_name, config=init_config)
+
+            # per-trial metrics
+            for i, trial in enumerate(result.trial_results):
+                adapter.report(
+                    {
+                        "task_name": trial.task_name,
+                        "trial_index": i,
+                        "status": trial.status,
+                        "score": trial.score,
+                        "exit_code": trial.exit_code,
+                        "duration_sec": trial.duration_sec,
+                    }
+                )
+
+            # job-level summary
+            adapter.report(
+                {
+                    "job_status": result.status.value,
+                    "job_score": result.score,
+                    "n_completed": result.n_completed,
+                    "n_failed": result.n_failed,
+                    "total_trials": len(result.trial_results),
+                }
+            )
+
+            adapter.close()
+        except Exception:  # noqa: BLE001 — tracking failure must not affect result return
+            init_logger(__name__).warning("job tracking report failed", exc_info=True)
