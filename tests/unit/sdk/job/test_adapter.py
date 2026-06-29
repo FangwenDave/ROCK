@@ -13,7 +13,7 @@ class _ConcreteAdapter(TrackingAdapter):
         self.report_calls = []
         self.close_called = False
 
-    def init(self, *, project, run_name, config):
+    def init(self, *, namespace, experiment_id, job_id, config):
         self.init_called = True
 
     def report(self, metrics):
@@ -70,7 +70,7 @@ class TestResolveTrackingAdapter:
 
     def test_adapter_lifecycle(self):
         adapter = _ConcreteAdapter()
-        adapter.init(project="p", run_name="r", config={"k": "v"})
+        adapter.init(namespace="ns", experiment_id="exp", job_id="j1", config={"k": "v"})
         assert adapter.init_called
 
         adapter.report({"score": 0.9, "status": "completed"})

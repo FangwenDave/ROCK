@@ -36,10 +36,10 @@ class TrackingAdapter(abc.ABC):
         """Initialize a tracking session.
 
         Args:
-            project:  Tracking project name / OTel service name.
-                      Typically ``config.namespace`` or ``config.experiment_id``.
-            run_name: Display name for this run. Typically ``config.job_name``.
-            config:   Flat dict of job-level metadata (labels, hyperparams, etc.).
+            namespace:     Tracking namespace (e.g. OTel service name).
+            experiment_id: Experiment identifier.
+            job_id:        Job / run identifier. Typically ``config.job_name``.
+            config:        Flat dict of job-level metadata (labels, hyperparams, etc.).
         """
 
     @abc.abstractmethod

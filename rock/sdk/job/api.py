@@ -110,9 +110,9 @@ class Job:
             experiment_id = config.experiment_id or "rock-experiment"
             job_name = config.job_name or "default"
             init_config = {
-                "job_name": config.job_name or "",
-                "namespace": config.namespace or "",
-                "experiment_id": config.experiment_id or "",
+                "job_name": job_name,
+                "namespace": namespace,
+                "experiment_id": experiment_id,
             }
             adapter.init(namespace=namespace, experiment_id=experiment_id, job_id=job_name, config=init_config)
 
@@ -139,7 +139,10 @@ class Job:
                     "total_trials": len(result.trial_results),
                 }
             )
-
-            adapter.close()
         except Exception:  # noqa: BLE001 — tracking failure must not affect result return
             init_logger(__name__).warning("job tracking report failed", exc_info=True)
+        finally:
+            try:
+                adapter.close()
+            except Exception:  # noqa: BLE001 — close() must never propagate
+                pass
