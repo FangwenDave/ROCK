@@ -280,6 +280,11 @@ class RuntimeConfig:
     string (e.g. "reg-a.aliyuncs.com/mirror-1"). When empty, the env var is
     not set and downstream tools skip mirror rewriting."""
 
+    otel_log_level: str = "INFO"
+    """Log level for OTel exporter and SDK loggers.
+    Supports: DEBUG, INFO, WARNING, ERROR.
+    Configurable via Nacos hot reload."""
+
     def __post_init__(self) -> None:
         # Convert dict to StandardSpec if needed
         if isinstance(self.standard_spec, dict):

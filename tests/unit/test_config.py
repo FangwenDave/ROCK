@@ -67,6 +67,28 @@ def test_runtime_config_instance_registry_mirrors_accepts_list():
     assert cfg.instance_registry_mirrors == mirrors
 
 
+def test_runtime_config_otel_log_level_default():
+    """RuntimeConfig.otel_log_level defaults to INFO."""
+    cfg = RuntimeConfig()
+    assert cfg.otel_log_level == "INFO"
+
+
+def test_runtime_config_otel_log_level_custom():
+    """RuntimeConfig.otel_log_level accepts custom values."""
+    cfg = RuntimeConfig(otel_log_level="WARNING")
+    assert cfg.otel_log_level == "WARNING"
+
+
+def test_runtime_config_otel_log_level_from_yaml():
+    """RuntimeConfig.otel_log_level parses from YAML dict."""
+    config = {
+        "standard_spec": {"memory": "8g", "cpus": 2},
+        "otel_log_level": "DEBUG",
+    }
+    cfg = RuntimeConfig(**config)
+    assert cfg.otel_log_level == "DEBUG"
+
+
 @pytest.mark.asyncio
 async def test_runtime_config_instance_registry_mirrors_from_yaml(tmp_path, monkeypatch):
     yaml_path = tmp_path / "rock-test.yml"
@@ -597,7 +619,8 @@ class TestFromEnvBaseInheritance:
         """Child config inherits and overrides base via _deep_merge."""
         base_file = tmp_path / "base.yml"
         base_file.write_text(
-            textwrap.dedent("""\
+            textwrap.dedent(
+                """\
             ray:
               namespace: "base-ns"
               runtime_env:
@@ -605,16 +628,19 @@ class TestFromEnvBaseInheritance:
             warmup:
               images:
                 - "python:3.11"
-        """)
+        """
+            )
         )
 
         child_file = tmp_path / "child.yml"
         child_file.write_text(
-            textwrap.dedent("""\
+            textwrap.dedent(
+                """\
             _base: base.yml
             ray:
               namespace: "child-ns"
-        """)
+        """
+            )
         )
 
         config = RockConfig.from_env(config_path=str(child_file))
@@ -628,7 +654,8 @@ class TestFromEnvBaseInheritance:
         """Scheduler tasks list is merged by task_class key."""
         base_file = tmp_path / "base.yml"
         base_file.write_text(
-            textwrap.dedent("""\
+            textwrap.dedent(
+                """\
             scheduler:
               tasks:
                 - task_class: "rock.admin.scheduler.tasks.cleanup.CleanupTask"
@@ -637,12 +664,14 @@ class TestFromEnvBaseInheritance:
                 - task_class: "rock.admin.scheduler.tasks.report.ReportTask"
                   enabled: true
                   interval_seconds: 300
-        """)
+        """
+            )
         )
 
         child_file = tmp_path / "child.yml"
         child_file.write_text(
-            textwrap.dedent("""\
+            textwrap.dedent(
+                """\
             _base: base.yml
             scheduler:
               tasks:
@@ -651,7 +680,8 @@ class TestFromEnvBaseInheritance:
                 - task_class: "rock.admin.scheduler.tasks.audit.AuditTask"
                   enabled: true
                   interval_seconds: 600
-        """)
+        """
+            )
         )
 
         config = RockConfig.from_env(config_path=str(child_file))
@@ -669,11 +699,13 @@ class TestFromEnvBaseInheritance:
     def test_base_not_found_raises(self, tmp_path: Path):
         child_file = tmp_path / "child.yml"
         child_file.write_text(
-            textwrap.dedent("""\
+            textwrap.dedent(
+                """\
             _base: nonexistent.yml
             ray:
               namespace: "ns"
-        """)
+        """
+            )
         )
         with pytest.raises(Exception, match="base config file.*not found"):
             RockConfig.from_env(config_path=str(child_file))
