@@ -277,3 +277,31 @@ def test_set_otel_log_level_case_insensitive():
     assert logging.getLogger("opentelemetry").level == logging.DEBUG
     # Reset to INFO
     set_otel_log_level("INFO")
+
+
+@patch("rock.admin.metrics.monitor.set_otel_log_level")
+@patch("rock.admin.metrics.monitor.get_uniagent_endpoint", return_value=("127.0.0.1", "4318"))
+@patch("rock.admin.metrics.monitor.get_instance_id", return_value="test-pod")
+@patch("rock.admin.metrics.monitor.env_vars")
+def test_create_calls_set_otel_log_level_default(mock_env_vars, mock_instance_id, mock_uniagent, mock_set_level):
+    """MetricsMonitor.create() should call set_otel_log_level with default INFO."""
+    mock_env_vars.ROCK_ADMIN_ENV = "daily"
+    mock_env_vars.ROCK_ADMIN_ROLE = "test"
+
+    MetricsMonitor.create(export_interval_millis=10000)
+
+    mock_set_level.assert_called_once_with("INFO")
+
+
+@patch("rock.admin.metrics.monitor.set_otel_log_level")
+@patch("rock.admin.metrics.monitor.get_uniagent_endpoint", return_value=("127.0.0.1", "4318"))
+@patch("rock.admin.metrics.monitor.get_instance_id", return_value="test-pod")
+@patch("rock.admin.metrics.monitor.env_vars")
+def test_create_calls_set_otel_log_level_custom(mock_env_vars, mock_instance_id, mock_uniagent, mock_set_level):
+    """MetricsMonitor.create() should call set_otel_log_level with custom level."""
+    mock_env_vars.ROCK_ADMIN_ENV = "daily"
+    mock_env_vars.ROCK_ADMIN_ROLE = "test"
+
+    MetricsMonitor.create(export_interval_millis=10000, otel_log_level="WARNING")
+
+    mock_set_level.assert_called_once_with("WARNING")

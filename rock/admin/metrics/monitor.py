@@ -57,6 +57,7 @@ class MetricsMonitor:
         endpoint: str = "",
         user_defined_tags: dict = {},
         metric_prefix: str = "",
+        otel_log_level: str = "INFO",
     ):
         patch_view_instrument_match()
         self.metric_prefix = metric_prefix
@@ -67,6 +68,7 @@ class MetricsMonitor:
         self.counters: dict[str, Counter] = {}
         self.gauges: dict[str, _Gauge] = {}
         self._register_metrics()
+        set_otel_log_level(otel_log_level)
         logger.info(
             f"Initializing MetricsCollector with host={host}, port={port}, pod={pod}, "
             f"env={env}, role={role}, endpoint={self.endpoint}"
@@ -79,6 +81,7 @@ class MetricsMonitor:
         metrics_endpoint: str = "",
         user_defined_tags: dict = {},
         metric_prefix: str = "",
+        otel_log_level: str = "INFO",
     ) -> "MetricsMonitor":
         host, port = get_uniagent_endpoint()
         pod = get_instance_id()
@@ -95,6 +98,7 @@ class MetricsMonitor:
             endpoint=metrics_endpoint,
             user_defined_tags=user_defined_tags,
             metric_prefix=metric_prefix,
+            otel_log_level=otel_log_level,
         )
 
     def _register_metrics(self):
