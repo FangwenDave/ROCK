@@ -78,3 +78,22 @@ def resolve_tracking_adapter() -> TrackingAdapter | None:
         except Exception as e:  # noqa: BLE001 — adapter failure must not break jobs
             logger.warning("failed loading tracking adapter %s: %s", ep.name, e)
     return None
+
+
+def resolve_tracking_adapters() -> list[TrackingAdapter]:
+    """Discover all tracking adapters via entry_points.
+
+    Returns a list of all successfully loaded adapters.
+    Returns an empty list if no entry_points are registered or all fail to load.
+    """
+    adapters: list[TrackingAdapter] = []
+    eps = entry_points(group=_ENTRY_POINT_GROUP)
+    for ep in eps:
+        try:
+            cls = ep.load()
+            adapter = cls()
+            logger.info("tracking adapter loaded: %s (%s)", ep.name, type(adapter).__name__)
+            adapters.append(adapter)
+        except Exception as e:  # noqa: BLE001 — adapter failure must not break jobs
+            logger.warning("failed loading tracking adapter %s: %s", ep.name, e)
+    return adapters

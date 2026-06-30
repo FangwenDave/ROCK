@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rock.sdk.job.adapter import TrackingAdapter, resolve_tracking_adapter
+from rock.sdk.job.adapter import TrackingAdapter, resolve_tracking_adapter, resolve_tracking_adapters
 from rock.sdk.job.config import JobConfig
 
 
@@ -84,3 +84,80 @@ class TestResolveTrackingAdapter:
 
         adapter.close()
         assert adapter.close_called
+
+
+class _AnotherConcreteAdapter(TrackingAdapter):
+    """A second concrete adapter for multi-adapter tests."""
+
+    def init(self, *, namespace, experiment_id, job_id, config):
+        pass
+
+    def report(self, metrics):
+        pass
+
+    def close(self):
+        pass
+
+
+class TestResolveTrackingAdapters:
+    def test_returns_empty_list_when_no_entry_points(self, monkeypatch):
+        monkeypatch.setattr(
+            "rock.sdk.job.adapter.entry_points",
+            lambda group=None: _FakeEntryPoints(),
+        )
+        result = resolve_tracking_adapters()
+        assert result == []
+
+    def test_loads_single_adapter(self, monkeypatch):
+        monkeypatch.setattr(
+            "rock.sdk.job.adapter.entry_points",
+            lambda group=None: _FakeEntryPoints([_FakeEntryPoint("adapter_a", cls=_ConcreteAdapter)]),
+        )
+        result = resolve_tracking_adapters()
+        assert len(result) == 1
+        assert isinstance(result[0], _ConcreteAdapter)
+
+    def test_loads_multiple_adapters(self, monkeypatch):
+        monkeypatch.setattr(
+            "rock.sdk.job.adapter.entry_points",
+            lambda group=None: _FakeEntryPoints(
+                [
+                    _FakeEntryPoint("adapter_a", cls=_ConcreteAdapter),
+                    _FakeEntryPoint("adapter_b", cls=_AnotherConcreteAdapter),
+                ]
+            ),
+        )
+        result = resolve_tracking_adapters()
+        assert len(result) == 2
+        assert isinstance(result[0], _ConcreteAdapter)
+        assert isinstance(result[1], _AnotherConcreteAdapter)
+
+    def test_skips_broken_adapter_loads_working(self, monkeypatch):
+        monkeypatch.setattr(
+            "rock.sdk.job.adapter.entry_points",
+            lambda group=None: _FakeEntryPoints(
+                [
+                    _FakeEntryPoint("broken", error=ImportError("no module")),
+                    _FakeEntryPoint("adapter_a", cls=_ConcreteAdapter),
+                    _FakeEntryPoint("also_broken", error=RuntimeError("boom")),
+                    _FakeEntryPoint("adapter_b", cls=_AnotherConcreteAdapter),
+                ]
+            ),
+        )
+        result = resolve_tracking_adapters()
+        assert len(result) == 2
+        assert isinstance(result[0], _ConcreteAdapter)
+        assert isinstance(result[1], _AnotherConcreteAdapter)
+
+    def test_all_broken_returns_empty(self, monkeypatch):
+        monkeypatch.setattr(
+            "rock.sdk.job.adapter.entry_points",
+            lambda group=None: _FakeEntryPoints(
+                [
+                    _FakeEntryPoint("broken_a", error=ImportError("no module")),
+                    _FakeEntryPoint("broken_b", error=RuntimeError("boom")),
+                ]
+            ),
+        )
+        result = resolve_tracking_adapters()
+        assert result == []
