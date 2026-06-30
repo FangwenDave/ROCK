@@ -1,3 +1,4 @@
+import logging
 import time
 from collections import Counter as CollectionsCounter
 
@@ -9,10 +10,39 @@ from opentelemetry.sdk.metrics.export import InMemoryMetricReader, PeriodicExpor
 from rock import env_vars
 from rock.admin.metrics.constants import MetricsConstants
 from rock.admin.metrics.gc_view_instrument_match import patch_view_instrument_match
-from rock.logger import init_logger
+from rock.logger import init_file_handler, init_logger
 from rock.utils import get_instance_id, get_uniagent_endpoint
 
 logger = init_logger(__name__)
+
+# OTel 相关的 logger 名称
+OTEL_LOGGER_NAMES = [
+    "rock.admin.metrics.monitor",  # export_with_logging wrapper
+    "opentelemetry",  # 所有 OTel SDK 内部 logger
+]
+
+
+def set_otel_log_level(level: str) -> None:
+    """Set log level for OTel exporter and SDK loggers.
+
+    Also attaches a file handler (matching ROCK's init_logger behavior)
+    so OTel internal logs are routed to the same log file.
+    """
+    numeric_level = getattr(logging, level.upper(), logging.INFO)
+
+    for name in OTEL_LOGGER_NAMES:
+        otel_logger = logging.getLogger(name)
+        otel_logger.setLevel(numeric_level)
+
+        # Attach file handler if ROCK_LOGGING_PATH is set.
+        # init_file_handler is @cached, so calling it with the same log_name
+        # returns the same handler instance (no duplicate file handles).
+        if env_vars.ROCK_LOGGING_PATH and env_vars.ROCK_LOGGING_FILE_NAME:
+            file_handler = init_file_handler(env_vars.ROCK_LOGGING_FILE_NAME)
+            if file_handler and not any(isinstance(h, logging.FileHandler) for h in otel_logger.handlers):
+                otel_logger.addHandler(file_handler)
+                # OTel SDK loggers propagate to root by default (propagate=True).
+                # Keep propagation on so records also reach any root handlers.
 
 
 class MetricsMonitor:

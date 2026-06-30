@@ -1,7 +1,8 @@
+import logging
 from unittest.mock import patch
 
 from rock.admin.metrics.constants import MetricsConstants
-from rock.admin.metrics.monitor import MetricsMonitor, aggregate_metrics
+from rock.admin.metrics.monitor import MetricsMonitor, aggregate_metrics, set_otel_log_level
 
 
 def test_aggregate_metrics():
@@ -244,3 +245,35 @@ class TestMetastoreMetricsRegistration:
         monitor.record_counter_by_name(MetricsConstants.METASTORE_DB_FAILURE, 1, {**attrs, "error_type": "IOError"})
         monitor.record_counter_by_name(MetricsConstants.METASTORE_DB_TOTAL, 1, attrs)
         monitor.record_gauge_by_name(MetricsConstants.METASTORE_DB_RT, 2.0, attrs)
+
+
+def test_set_otel_log_level_sets_info_level():
+    """set_otel_log_level should set all OTel loggers to INFO."""
+    set_otel_log_level("INFO")
+    assert logging.getLogger("rock.admin.metrics.monitor").level == logging.INFO
+    assert logging.getLogger("opentelemetry").level == logging.INFO
+
+
+def test_set_otel_log_level_sets_warning_level():
+    """set_otel_log_level should set all OTel loggers to WARNING."""
+    set_otel_log_level("WARNING")
+    assert logging.getLogger("rock.admin.metrics.monitor").level == logging.WARNING
+    assert logging.getLogger("opentelemetry").level == logging.WARNING
+    # Reset to INFO for other tests
+    set_otel_log_level("INFO")
+
+
+def test_set_otel_log_level_invalid_falls_back_to_info():
+    """set_otel_log_level should fall back to INFO for invalid levels."""
+    set_otel_log_level("INVALID_LEVEL")
+    assert logging.getLogger("rock.admin.metrics.monitor").level == logging.INFO
+    assert logging.getLogger("opentelemetry").level == logging.INFO
+
+
+def test_set_otel_log_level_case_insensitive():
+    """set_otel_log_level should accept lowercase level names."""
+    set_otel_log_level("debug")
+    assert logging.getLogger("rock.admin.metrics.monitor").level == logging.DEBUG
+    assert logging.getLogger("opentelemetry").level == logging.DEBUG
+    # Reset to INFO
+    set_otel_log_level("INFO")
