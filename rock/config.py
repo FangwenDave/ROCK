@@ -5,6 +5,7 @@ from pathlib import Path
 import yaml
 
 from rock import env_vars
+from rock.admin.metrics.monitor import set_otel_log_level
 from rock.logger import init_logger
 from rock.utils.database import is_absolute_db_path
 from rock.utils.providers import NacosConfigProvider
@@ -526,10 +527,17 @@ class RockConfig:
             runtime_overrides = nacos_result["runtime"]
             if "instance_registry_mirrors" in runtime_overrides:
                 self.runtime.instance_registry_mirrors = list(runtime_overrides["instance_registry_mirrors"] or [])
+            if "otel_log_level" in runtime_overrides:
+                new_level = runtime_overrides["otel_log_level"]
+                if new_level != self.runtime.otel_log_level:
+                    self.runtime.otel_log_level = new_level
+                    set_otel_log_level(new_level)
+                    logger.info(f"Updated OTel log level to {new_level} from Nacos")
 
         logger.info(
             f"Updated config from Nacos: sandbox_config={self.sandbox_config}, proxy_service={self.proxy_service}"
             f", image_registry_mirrors={self.image_registry_mirrors}"
             f", image_mirror_lookup_allowlist={self.image_mirror_lookup_allowlist}"
             f", instance_registry_mirrors={self.runtime.instance_registry_mirrors}"
+            f", otel_log_level={self.runtime.otel_log_level}"
         )

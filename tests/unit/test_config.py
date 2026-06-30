@@ -1,7 +1,7 @@
 import tempfile
 import textwrap
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -318,6 +318,42 @@ async def test_nacos_update_without_runtime_key_preserves_instance_mirrors():
     await rock_config.update()
 
     assert rock_config.runtime.instance_registry_mirrors == ["keep.example.com/ns"]
+
+
+# ===== Nacos hot-reload for otel_log_level =====
+
+
+@pytest.mark.asyncio
+async def test_nacos_update_applies_otel_log_level():
+    """RockConfig.update() reads runtime.otel_log_level and calls set_otel_log_level."""
+    rock_config = RockConfig()
+    rock_config.nacos_provider = MagicMock()
+    rock_config.nacos_provider.get_config = AsyncMock(
+        return_value={
+            "runtime": {"otel_log_level": "WARNING"},
+        }
+    )
+
+    with patch("rock.config.set_otel_log_level") as mock_set_level:
+        await rock_config.update()
+        mock_set_level.assert_called_once_with("WARNING")
+
+    assert rock_config.runtime.otel_log_level == "WARNING"
+
+
+@pytest.mark.asyncio
+async def test_nacos_update_without_otel_log_level_preserves_existing():
+    """RockConfig.update() preserves otel_log_level when key is missing."""
+    rock_config = RockConfig()
+    rock_config.runtime.otel_log_level = "DEBUG"
+    rock_config.nacos_provider = MagicMock()
+    rock_config.nacos_provider.get_config = AsyncMock(return_value={"sandbox_config": {}})
+
+    with patch("rock.config.set_otel_log_level") as mock_set_level:
+        await rock_config.update()
+        mock_set_level.assert_not_called()
+
+    assert rock_config.runtime.otel_log_level == "DEBUG"
 
 
 # ===== _resolve_k8s_template_includes =====
