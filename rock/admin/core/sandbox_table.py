@@ -96,6 +96,7 @@ class SandboxTable:
             metrics_endpoint=rock_config.runtime.metrics_endpoint if rock_config else "",
             user_defined_tags=rock_config.runtime.user_defined_tags if rock_config else {},
             metric_prefix="meta_store.db",
+            otel_log_level=rock_config.runtime.otel_log_level if rock_config else "INFO",
         )
 
     @_retry_on_disconnect

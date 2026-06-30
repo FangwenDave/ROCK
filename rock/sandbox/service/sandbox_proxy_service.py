@@ -58,6 +58,7 @@ class SandboxProxyService:
             export_interval_millis=20_000,
             metrics_endpoint=rock_config.runtime.metrics_endpoint,
             user_defined_tags=rock_config.runtime.user_defined_tags,
+            otel_log_level=rock_config.runtime.otel_log_level,
         )
         self.oss_config: OssConfig = rock_config.oss
         self.proxy_config: ProxyServiceConfig = rock_config.proxy_service

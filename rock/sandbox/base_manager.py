@@ -33,6 +33,7 @@ class BaseManager:
             export_interval_millis=20_000,
             metrics_endpoint=rock_config.runtime.metrics_endpoint,
             user_defined_tags=rock_config.runtime.user_defined_tags,
+            otel_log_level=rock_config.runtime.otel_log_level,
         )
         self._report_interval = 10
         self._check_job_interval = 180
