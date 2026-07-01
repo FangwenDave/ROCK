@@ -1,13 +1,22 @@
-"""Tests for rock.sdk.job.adapter — TrackingAdapter base class + discovery."""
+"""Tests for rock.sdk.job.adapter — TrackingAdapter base class + directory-scan discovery.
+
+Adapters are discovered by scanning the directories listed in
+``ROCK_TRACKING_LOAD_PATHS`` for ``TrackingAdapter`` subclasses. Internal /
+proprietary adapters are layered in via a symlink into one of those directories
+(the same pattern used by the CLI CommandLoader), so no entry_points
+registration or ``pip install`` step is required.
+"""
 
 from __future__ import annotations
 
-from rock.sdk.job.adapter import TrackingAdapter, resolve_tracking_adapter, resolve_tracking_adapters
+import textwrap
+
+from rock.sdk.job.adapter import TrackingAdapter, resolve_tracking_adapters
 from rock.sdk.job.config import JobConfig
 
 
 class _ConcreteAdapter(TrackingAdapter):
-    """Concrete adapter for testing (implements all abstract methods)."""
+    """Concrete adapter for lifecycle testing (implements all abstract methods)."""
 
     def __init__(self):
         self.init_called = False
@@ -26,51 +35,24 @@ class _ConcreteAdapter(TrackingAdapter):
         self.close_called = True
 
 
-class _FakeEntryPoint:
-    """Fake entry_point that mimics importlib.metadata.EntryPoint."""
+def _write_adapter(directory, filename: str, class_name: str) -> None:
+    """Write a .py file defining a TrackingAdapter subclass into *directory*."""
+    src = textwrap.dedent(
+        f"""
+        from rock.sdk.job.adapter import TrackingAdapter
 
-    def __init__(self, name, cls=None, error=None):
-        self.name = name
-        self._cls = cls
-        self._error = error
+        class {class_name}(TrackingAdapter):
+            def init(self, *, namespace, experiment_id, job_id, config):
+                pass
 
-    def load(self):
-        if self._error:
-            raise self._error
-        return self._cls
-
-
-class _FakeEntryPoints(list):
-    """Fake entry_points() return value — a list that supports group kwarg."""
-
-    pass
+            def report(self, metrics):
+                pass
+        """
+    )
+    (directory / filename).write_text(src)
 
 
-class TestResolveTrackingAdapter:
-    def test_returns_none_when_no_entry_points(self, monkeypatch):
-        monkeypatch.setattr(
-            "rock.sdk.job.adapter.entry_points",
-            lambda group=None: _FakeEntryPoints(),
-        )
-        result = resolve_tracking_adapter()
-        assert result is None
-
-    def test_loads_first_available_adapter(self, monkeypatch):
-        monkeypatch.setattr(
-            "rock.sdk.job.adapter.entry_points",
-            lambda group=None: _FakeEntryPoints([_FakeEntryPoint("test_adapter", cls=_ConcreteAdapter)]),
-        )
-        result = resolve_tracking_adapter()
-        assert isinstance(result, _ConcreteAdapter)
-
-    def test_skips_broken_adapter(self, monkeypatch):
-        monkeypatch.setattr(
-            "rock.sdk.job.adapter.entry_points",
-            lambda group=None: _FakeEntryPoints([_FakeEntryPoint("broken", error=ImportError("no module"))]),
-        )
-        result = resolve_tracking_adapter()
-        assert result is None
-
+class TestAdapterLifecycle:
     def test_adapter_lifecycle(self):
         adapter = _ConcreteAdapter()
         config = JobConfig(namespace="ns", experiment_id="exp", job_name="j1")
@@ -86,78 +68,79 @@ class TestResolveTrackingAdapter:
         assert adapter.close_called
 
 
-class _AnotherConcreteAdapter(TrackingAdapter):
-    """A second concrete adapter for multi-adapter tests."""
-
-    def init(self, *, namespace, experiment_id, job_id, config):
-        pass
-
-    def report(self, metrics):
-        pass
-
-    def close(self):
-        pass
-
-
 class TestResolveTrackingAdapters:
-    def test_returns_empty_list_when_no_entry_points(self, monkeypatch):
-        monkeypatch.setattr(
-            "rock.sdk.job.adapter.entry_points",
-            lambda group=None: _FakeEntryPoints(),
-        )
-        result = resolve_tracking_adapters()
-        assert result == []
+    def test_returns_empty_list_when_directory_missing(self, tmp_path, monkeypatch):
+        missing = tmp_path / "does_not_exist"
+        monkeypatch.setenv("ROCK_TRACKING_LOAD_PATHS", str(missing))
+        assert resolve_tracking_adapters() == []
 
-    def test_loads_single_adapter(self, monkeypatch):
-        monkeypatch.setattr(
-            "rock.sdk.job.adapter.entry_points",
-            lambda group=None: _FakeEntryPoints([_FakeEntryPoint("adapter_a", cls=_ConcreteAdapter)]),
-        )
+    def test_returns_empty_list_when_directory_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("ROCK_TRACKING_LOAD_PATHS", str(tmp_path))
+        assert resolve_tracking_adapters() == []
+
+    def test_discovers_adapter_in_directory(self, tmp_path, monkeypatch):
+        _write_adapter(tmp_path, "foo_adapter.py", "FooAdapter")
+        monkeypatch.setenv("ROCK_TRACKING_LOAD_PATHS", str(tmp_path))
+
         result = resolve_tracking_adapters()
+
         assert len(result) == 1
-        assert isinstance(result[0], _ConcreteAdapter)
+        # verifies module-identity: the discovered class really is a
+        # TrackingAdapter subclass (same class object across dynamic import)
+        assert isinstance(result[0], TrackingAdapter)
+        assert type(result[0]).__name__ == "FooAdapter"
 
-    def test_loads_multiple_adapters(self, monkeypatch):
-        monkeypatch.setattr(
-            "rock.sdk.job.adapter.entry_points",
-            lambda group=None: _FakeEntryPoints(
-                [
-                    _FakeEntryPoint("adapter_a", cls=_ConcreteAdapter),
-                    _FakeEntryPoint("adapter_b", cls=_AnotherConcreteAdapter),
-                ]
-            ),
-        )
-        result = resolve_tracking_adapters()
-        assert len(result) == 2
-        assert isinstance(result[0], _ConcreteAdapter)
-        assert isinstance(result[1], _AnotherConcreteAdapter)
+    def test_discovers_multiple_adapters_across_files(self, tmp_path, monkeypatch):
+        _write_adapter(tmp_path, "a_adapter.py", "AAdapter")
+        _write_adapter(tmp_path, "b_adapter.py", "BAdapter")
+        monkeypatch.setenv("ROCK_TRACKING_LOAD_PATHS", str(tmp_path))
 
-    def test_skips_broken_adapter_loads_working(self, monkeypatch):
-        monkeypatch.setattr(
-            "rock.sdk.job.adapter.entry_points",
-            lambda group=None: _FakeEntryPoints(
-                [
-                    _FakeEntryPoint("broken", error=ImportError("no module")),
-                    _FakeEntryPoint("adapter_a", cls=_ConcreteAdapter),
-                    _FakeEntryPoint("also_broken", error=RuntimeError("boom")),
-                    _FakeEntryPoint("adapter_b", cls=_AnotherConcreteAdapter),
-                ]
-            ),
-        )
         result = resolve_tracking_adapters()
-        assert len(result) == 2
-        assert isinstance(result[0], _ConcreteAdapter)
-        assert isinstance(result[1], _AnotherConcreteAdapter)
 
-    def test_all_broken_returns_empty(self, monkeypatch):
-        monkeypatch.setattr(
-            "rock.sdk.job.adapter.entry_points",
-            lambda group=None: _FakeEntryPoints(
-                [
-                    _FakeEntryPoint("broken_a", error=ImportError("no module")),
-                    _FakeEntryPoint("broken_b", error=RuntimeError("boom")),
-                ]
-            ),
-        )
+        names = sorted(type(a).__name__ for a in result)
+        assert names == ["AAdapter", "BAdapter"]
+
+    def test_skips_file_with_import_error_loads_working(self, tmp_path, monkeypatch):
+        _write_adapter(tmp_path, "good_adapter.py", "GoodAdapter")
+        (tmp_path / "broken_adapter.py").write_text("import a_module_that_does_not_exist\n")
+        monkeypatch.setenv("ROCK_TRACKING_LOAD_PATHS", str(tmp_path))
+
         result = resolve_tracking_adapters()
-        assert result == []
+
+        assert [type(a).__name__ for a in result] == ["GoodAdapter"]
+
+    def test_ignores_base_class_and_unrelated_classes(self, tmp_path, monkeypatch):
+        # A file that imports the base class and defines an unrelated class,
+        # but no concrete adapter — nothing should be discovered.
+        (tmp_path / "noise.py").write_text(
+            textwrap.dedent(
+                """
+                from rock.sdk.job.adapter import TrackingAdapter
+
+                class NotAnAdapter:
+                    pass
+                """
+            )
+        )
+        monkeypatch.setenv("ROCK_TRACKING_LOAD_PATHS", str(tmp_path))
+        assert resolve_tracking_adapters() == []
+
+    def test_ignores_init_and_non_py_files(self, tmp_path, monkeypatch):
+        _write_adapter(tmp_path, "__init__.py", "InitAdapter")
+        (tmp_path / "notes.txt").write_text("not python")
+        monkeypatch.setenv("ROCK_TRACKING_LOAD_PATHS", str(tmp_path))
+        assert resolve_tracking_adapters() == []
+
+    def test_supports_multiple_comma_separated_paths(self, tmp_path, monkeypatch):
+        dir_a = tmp_path / "a"
+        dir_b = tmp_path / "b"
+        dir_a.mkdir()
+        dir_b.mkdir()
+        _write_adapter(dir_a, "a_adapter.py", "AAdapter")
+        _write_adapter(dir_b, "b_adapter.py", "BAdapter")
+        monkeypatch.setenv("ROCK_TRACKING_LOAD_PATHS", f"{dir_a},{dir_b}")
+
+        result = resolve_tracking_adapters()
+
+        names = sorted(type(a).__name__ for a in result)
+        assert names == ["AAdapter", "BAdapter"]
