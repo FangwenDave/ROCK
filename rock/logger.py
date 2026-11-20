@@ -3,6 +3,7 @@ import os
 import sys
 from datetime import datetime
 from functools import cache
+from logging.handlers import RotatingFileHandler
 from zoneinfo import ZoneInfo
 
 from rock import env_vars
@@ -95,10 +96,19 @@ def init_file_handler(log_name: str):
         # Multi-worker safe: when ROCK_LOGGING_APPEND is set, every worker opens
         # the shared file in append mode (no per-process truncate race). The
         # one-time clear-on-deploy is done by the entrypoint via reset_log_file().
-        # Default stays "w+" so single-process services (rocklet, cli) keep their
-        # truncate-on-start behavior.
-        mode = "a" if env_vars.ROCK_LOGGING_APPEND else "w+"
-        handler = logging.FileHandler(log_file_path, mode=mode, encoding="utf-8")
+        # Rotation stays on the single-process path: workers renaming one shared
+        # file would race and drop lines.
+        if env_vars.ROCK_LOGGING_APPEND:
+            handler = logging.FileHandler(log_file_path, mode="a", encoding="utf-8")
+        else:
+            # RotatingFileHandler forces append once maxBytes>0; keep truncate-on-start.
+            open(log_file_path, "w").close()
+            handler = RotatingFileHandler(
+                log_file_path,
+                maxBytes=env_vars.ROCK_LOGGING_MAX_BYTES,
+                backupCount=env_vars.ROCK_LOGGING_BACKUP_COUNT,
+                encoding="utf-8",
+            )
         handler.setFormatter(TimezoneFormatter(log_color_enable=False, tz_string=env_vars.ROCK_TIME_ZONE))
         return handler
     return None
